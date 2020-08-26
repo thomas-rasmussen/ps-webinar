@@ -1,0 +1,53 @@
+strata,pop,__var,__sd,male
+overall,ATE-weighted,male,0.0016010552,
+overall,ATE-weighted,risk_score,0.0022122824,
+overall,ATE-weighted,agegroup: 0-18,0.0009735522,
+overall,ATE-weighted,agegroup: 19-64,0.0000309816,
+overall,ATE-weighted,agegroup: 65+,0.0010085543,
+overall,ATT-weighted,male,0.0041304846,
+overall,ATT-weighted,risk_score,0.0070897383,
+overall,ATT-weighted,agegroup: 0-18,0.0026050294,
+overall,ATT-weighted,agegroup: 19-64,0.0057027382,
+overall,ATT-weighted,agegroup: 65+,0.0039641777,
+overall,Matched,male,0.0060214219,
+overall,Matched,risk_score,0.0017771307,
+overall,Matched,agegroup: 0-18,0.00432728,
+overall,Matched,agegroup: 19-64,0.0095895634,
+overall,Matched,agegroup: 65+,0.0066902244,
+overall,Original,male,0.2038355652,
+overall,Original,risk_score,0.4065545231,
+overall,Original,agegroup: 0-18,0.1124352931,
+overall,Original,agegroup: 19-64,0.0280735305,
+overall,Original,agegroup: 65+,0.1451495938,
+male,ATE-weighted,risk_score,0.0202041502,0
+male,ATE-weighted,agegroup: 0-18,0.0103963066,0
+male,ATE-weighted,agegroup: 19-64,0.0166275537,0
+male,ATE-weighted,agegroup: 65+,0.029715247,0
+male,ATE-weighted,risk_score,0.0154936322,1
+male,ATE-weighted,agegroup: 0-18,0.0083571019,1
+male,ATE-weighted,agegroup: 19-64,0.0165249489,1
+male,ATE-weighted,agegroup: 65+,0.0275557518,1
+male,ATT-weighted,risk_score,0.0174247687,0
+male,ATT-weighted,agegroup: 0-18,0.0105551873,0
+male,ATT-weighted,agegroup: 19-64,0.021488948,0
+male,ATT-weighted,agegroup: 65+,0.0336829609,0
+male,ATT-weighted,risk_score,0.001349748,1
+male,ATT-weighted,agegroup: 0-18,0.0132417367,1
+male,ATT-weighted,agegroup: 19-64,0.0071018826,1
+male,ATT-weighted,agegroup: 65+,0.0203428565,1
+male,Matched,risk_score,0.0055630002,0
+male,Matched,agegroup: 0-18,0.0495816154,0
+male,Matched,agegroup: 19-64,0.0048118489,0
+male,Matched,agegroup: 65+,0.0516994128,0
+male,Matched,risk_score,0.0074648398,1
+male,Matched,agegroup: 0-18,0.033100602,1
+male,Matched,agegroup: 19-64,0.0215320613,1
+male,Matched,agegroup: 65+,0.0544877505,1
+male,Original,risk_score,0.4255768809,0
+male,Original,agegroup: 0-18,0.1280411393,0
+male,Original,agegroup: 19-64,0.0368364893,0
+male,Original,agegroup: 65+,0.1694900215,0
+male,Original,risk_score,0.396947254,1
+male,Original,agegroup: 0-18,0.1016987379,1
+male,Original,agegroup: 19-64,0.0171647529,1
+male,Original,agegroup: 65+,0.1225881333,1

@@ -1,0 +1,9 @@
+check,MarEffect,E_LP_NoInt,Cox_LP_NoE,parameter,ClassVal0,HazardRatio,HRLowerCL,HRUpperCL
+Induced relative conditional effects,relative effect = 0.5,log(1.2) * x1 + log(1.2) * x2 + log(1.5) * x3 + log(1.5) * x4,log(1.2) * x1 + log(1.2) * x2 + log(1.5) * x3 + log(1.5) * x4,treatment,,0.447,0.447,0.448
+Induced relative conditional effects,relative effect = 0.5,log(1.2) * x1 + log(1.2) * x2 + log(1.5) * x3 + log(1.5) * x4,log(1.2) * x1 + log(1.2) * x2 + log(1.5) * x3 + log(1.5) * x4,male (x3),,1.496,1.494,1.498
+Induced relative conditional effects,relative effect = 0.5,log(1.2) * x1 + log(1.2) * x2 + log(1.5) * x3 + log(1.5) * x4,log(1.2) * x1 + log(1.2) * x2 + log(1.5) * x3 + log(1.5) * x4,risk_score (x4),,1.497,1.496,1.499
+Induced relative conditional effects,relative effect = 0.5,log(1.2) * x1 + log(1.2) * x2 + log(1.5) * x3 + log(1.5) * x4,log(1.2) * x1 + log(1.2) * x2 + log(1.5) * x3 + log(1.5) * x4,agegroup 19-64 (x1 + x2 = 1),19-64,1.200,1.198,1.202
+Induced relative conditional effects,relative effect = 0.5,log(1.2) * x1 + log(1.2) * x2 + log(1.5) * x3 + log(1.5) * x4,log(1.2) * x1 + log(1.2) * x2 + log(1.5) * x3 + log(1.5) * x4,agegroup 65+ (x1 + x2 = 2),65+,1.439,1.436,1.442
+Induced relative crude treatment effect,relative effect = 0.5,log(1.2) * x1 + log(1.2) * x2 + log(1.5) * x3 + log(1.5) * x4,log(1.2) * x1 + log(1.2) * x2 + log(1.5) * x3 + log(1.5) * x4,treatment,,0.593,0.593,0.594
+Induced relative ATE,relative effect = 0.5,log(1.2) * x1 + log(1.2) * x2 + log(1.5) * x3 + log(1.5) * x4,log(1.2) * x1 + log(1.2) * x2 + log(1.5) * x3 + log(1.5) * x4,treatment,,0.495,0.494,0.495
+Induced relative ATT,relative effect = 0.5,log(1.2) * x1 + log(1.2) * x2 + log(1.5) * x3 + log(1.5) * x4,log(1.2) * x1 + log(1.2) * x2 + log(1.5) * x3 + log(1.5) * x4,treatment,,0.495,0.494,0.495
