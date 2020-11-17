@@ -59,9 +59,9 @@ run;
 ods escapechar = "^";
 ods pdf file = "&path_output\summary_table.pdf" notoc;
   proc report data = sum_tbl2
-      style(report) = {font_size = 8pt}
-      style(header) = {font_size = 8pt font_weight = bold}
-      style(column) = {font_size = 8pt just = c}
+      style(report) = {font_size = 7pt}
+      style(header) = {font_size = 7pt font_weight = bold}
+      style(column) = {font_size = 7pt just = c}
     ;
     columns __label pop, treatment, (__stat_char __report_dummy);
     define __label / "" group order = data format = $label.

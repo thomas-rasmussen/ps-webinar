@@ -1,6 +1,10 @@
-effect,pop,HazardRatio,HRLowerCL,HRUpperCL
-Marginal,ATE-weighted,0.497,0.481,0.520
-Marginal,ATT-weighted,0.498,0.482,0.518
-Marginal,Matched,0.502,0.475,0.527
-Conditional,Original,0.447,0.428,0.468
-Marginal,Original,0.604,0.582,0.631
+effect,var_est,pop,HazardRatio,HRLowerCL,HRUpperCL
+Marginal,bootstrap,ATE-weighted,0.497,0.476,0.519
+Marginal,sandwich,ATE-weighted,0.497,0.476,0.519
+Marginal,bootstrap,ATT-weighted,0.498,0.481,0.518
+Marginal,sandwich,ATT-weighted,0.498,0.478,0.519
+Marginal,bootstrap,Matched,0.502,0.473,0.531
+Marginal,sandwich,Matched,0.502,0.482,0.524
+Conditional,,Original,0.447,0.428,0.468
+Marginal,bootstrap,Original,0.604,0.582,0.631
+Marginal,sandwich,Original,0.604,0.579,0.630

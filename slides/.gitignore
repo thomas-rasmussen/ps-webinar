@@ -4,11 +4,3 @@
 .Ruserdata
 *.csv
 *.sas7bdat
-xaringan-themer.css
-slides_files/
-libs/
-*.pdf
-!slides.pdf
-*.png
-*.svg
-

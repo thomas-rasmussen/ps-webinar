@@ -1,69 +1,17 @@
-/*******************************************************************************
-Assess proportional hazards assumption
-*******************************************************************************/
-
-/* Estimate survival curves for treated and untreated patients. */
-proc lifetest data = data.analysis_dat outsurv = ph1
-     notable noprint method = km;
-  strata pop treatment;
-  time time * death(0);
-  weight w;
-run;
-
-/* Calculate log(time) and log(-log(survival)) */
-data ph2;
-  set ph1;
-  by pop treatment;
-  retain surv;
-  if first.treatment then surv = 1;
-  if survival ne . then surv = survival;
-  if time > 0 then log_time = log(time);
-  else log_time = .;
-  if surv < 1 then lml_surv = log(-log(surv));
-  else lml_surv = .;
-  keep pop treatment log_time lml_surv;
-run;
-
-proc sort data =ph2 nodupkeys;
-  by _all_;
-run;
-
-/* Save data for slides */
-data data.assess_ph;
-  set ph2;
-run;
-
-proc format;
-  value treatment
-    0 = "Untreated"
-    1 = "Treated"
-  ;
-run;
-
-ods pdf file = "&path_output\assess_ph.pdf" pdftoc = 1 style = statistical;
-  proc sgpanel data = ph2;
-    panelby pop / onepanel;
-    step x = log_time y = lml_surv / group = treatment;
-    colaxis label = "log(time)";
-    rowaxis label = "log(-log(survival))";
-    format treatment treatment.;
-    keylegend / title = "";
-  run;
-ods pdf close;
-
 
 /*******************************************************************************
 Bootstrap
 *******************************************************************************/
 
-/* Since we are using bootstrap sampling to estimate confidence intervals, we
+/* Since we want to use bootstrapping to estimate confidence intervals, we
 start by making the bootstrap samples and add them to the original population. 
 Then we estimate of ps's, make matched and weighted populations etc. like 
-before, now just done in each of the bootstrap samples.*/
+before, now just done in botht he original population and in each of the 
+bootstrap samples. */
 
 /* Make bootstrap samples */
 proc surveyselect data = data.population out = bs1(drop = numberhits) 
-  method = urs seed = 1 noprint reps = 200 samprate = 1 outhits;
+  method = urs seed = 1 noprint reps = 100 samprate = 1 outhits;
 run;
 
 /* Add to original data */
@@ -82,7 +30,8 @@ proc logistic data = bs2 noprint;
   output out = ps(drop = _level_) prob = ps;
 run;
 
-/* Make ps-matched populations. Takes 5-10 mins on SAS server. */
+/* Make ps-matched populations. Takes approximately 5 minutes on the 
+SAS server. */
 %ps_match(
   in_ds = ps, 
   out_pf = ps, 
@@ -138,12 +87,11 @@ run;
 
 
 /*******************************************************************************
-Relative conditional effect
+Estimate relative conditional effect
 *******************************************************************************/
 
-/* Estimate conditional effect of treatment on 1 year mortality. */
-proc phreg data = dat1(where = (pop = "Original" and replicate = 0)) 
-    plots = none;
+proc phreg data = dat1 plots = none;
+  where pop = "Original" and replicate = 0;
   by pop;
   class agegroup(ref = "0-18") / param = ref;
   model time * death(0) = treatment male risk_score agegroup / risklimits;
@@ -158,25 +106,44 @@ run;
 
 
 /*******************************************************************************
-Relative marginal effects
+Estimate relative marginal effect
 *******************************************************************************/
 
+/* Use robust sandwich variance estimator to estimate HR CI */
+proc phreg data = dat1 plots = none covsandwich;
+  where replicate = 0;
+  by pop;
+  model time * death(0) = treatment / risklimits;
+  weight w;
+  ods output ParameterEstimates = rel_mar_sandwich1(keep = pop hazardratio hrlowercl hruppercl);
+run;
+
+/* Use bootstrap samples to estimate distribution of HR estimator */
 proc phreg data = dat1 plots = none;
   by pop replicate;
   model time * death(0) = treatment / risklimits;
   weight w;
-  ods output ParameterEstimates = rel_mar1;
+  ods output ParameterEstimates = rel_mar_bs1;
 run;
 
-/* Use 2.5 and 97.5 percentile of bootstrap estimates as CI limits */
-proc univariate data = rel_mar1(where = (replicate ne 0));
+/* Save bootstrap estimates for graph in presentation. */
+data data.bootstrap_est;
+  set rel_mar_bs1;
+run;
+
+/* Find 2.5 and 97.5 percentile of bootstrap estimates. Note that we are
+exclduing the estimate from the original sample. */
+proc univariate data = rel_mar_bs1;
+  where replicate ne 0;
   by pop;
   var hazardratio;
-  output out = rel_mar_ci1 pctlpts = 2.5 97.5 pctlpre = p;
+  output out = bs_per1 pctlpts = 2.5 97.5 pctlpre = p;
 run;
 
-data rel_mar2;
-  merge rel_mar1(where = (replicate = 0)) rel_mar_ci1(in = q2);
+/* Merge bootstrap CI estimates to estimates from original sample that is
+used as the point estimate. */
+data rel_mar_bs2;
+  merge rel_mar_bs1(where = (replicate = 0)) bs_per1(in = q2);
   by pop;
   if q2 then do;
     hrlowercl = p2_5;
@@ -185,21 +152,28 @@ data rel_mar2;
   keep pop hazardratio hrlowercl hruppercl;
 run;
 
-/* Combine effect estimates and save for slides. */
+
+/*******************************************************************************
+Combine relative effect estimates 
+*******************************************************************************/
+
+/* Combine and save for use in slides */
 data all_rel_est;
-  format effect $50.;
-  set rel_cond2(in = q1) rel_mar2(in = q2);
+  format effect var_est $50.;
+  set rel_cond2(in = q1) rel_mar_sandwich1(in = q2) rel_mar_bs2(in = q3);
   if q1 then effect = "Conditional";
-  else if q2 then effect = "Marginal";
+  else effect = "Marginal";
+  if q2 then var_est = "sandwich"; 
+  else if q3 then var_est = "bootstrap";
 run;
 
 proc sort data = all_rel_est out = data.relative_effect_estimates;
-  by pop effect;
+  by pop effect var_est;
 run;
 
 
 /*******************************************************************************
-Cumulative incidence curves
+Estimate cumulative incidence curves
 *******************************************************************************/
 
 /* Estimate cumulative incidence curves for treated and untreated patients. */
@@ -233,7 +207,7 @@ data cum_inc3;
   drop tmp time_last i;
 run;
 
-/* Estimate CI's from bootstrap samples */
+/* Estimate CI's for each time point using bootstrap samples */
 proc sort data = cum_inc3(where = (replicate ne 0)) out = cum_inc_ci1;
   by pop treatment time;
 run;
@@ -259,7 +233,8 @@ run;
 Estimate absolute ATE and ATT
 *******************************************************************************/
 
-/* Estimate risk difference */
+/* Estimate risk difference at each time point using the incidence curve 
+estimates */
 proc sort data = cum_inc3 out = cum_inc_diff1;
   by pop replicate time descending treatment;
 run;
@@ -269,12 +244,12 @@ data cum_inc_diff2;
   by pop replicate time;
   retain cum_inc_diff;
   if first.time then cum_inc_diff = cum_inc;
-  else cum_inc_diff = cum_inc_diff - cum_Inc;
+  else cum_inc_diff = cum_inc_diff - cum_inc;
   if last.time;
   drop cum_inc treatment;
 run;
 
-/* Estimate CI's */  
+/* Estimate CI's using the bootstrap sample estimmates */  
 proc sort data = cum_inc_diff2(where = (replicate ne 0)) out = cum_inc_diff_ci1;
   by pop time;
 run;

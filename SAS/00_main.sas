@@ -6,9 +6,9 @@
 %let path_syntax = &path_main\SAS;
 %let path_macros = &path_main\SAS-macros;
 %let path_output = &path_main\output;
-%let path_data = &path_main\data;
+%let path_data   = &path_main\data;
 
-libname data "&path_data";
+libname data   "&path_data";
 libname output "&path_output";
 
 /* Load macros */
@@ -27,10 +27,13 @@ libname output "&path_output";
 %include "&path_syntax\02_make_analysis_dat.sas";
 
 /* Assess balance */
-%include "path_syntax\03_assess_balance.sas";
+%include "&path_syntax\03_assess_balance.sas";
+
+/* Assess proportional hazards assumption */
+%include "path_syntax\04_assess_ph.sas";
 
 /* Estimate treatment effect */
-%include "path_syntax\04_estimate_treatment_effect.sas";
+%include "path_syntax\05_estimate_treatment_effect.sas";
 
 /* Export data */
-%include "path_syntax\05_export_dat.sas";
+%include "path_syntax\06_export_dat.sas";
