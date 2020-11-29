@@ -25,8 +25,9 @@ run;
 /* Estimate ps's */
 proc logistic data = bs2 noprint;
   by replicate;
-  class agegroup(ref = "0-18") / param = ref;
-  model treatment(ref = "0") = male risk_score agegroup;
+  class comorbidity_score(ref = "0") / param = ref;
+  effect age_spl=spline(age / basis=tpf degree=3 naturalcubic);
+  model treatment(ref = "0") = comorbidity_score risk_score male|age_spl;
   output out = ps(drop = _level_) prob = ps;
 run;
 
@@ -93,8 +94,9 @@ Estimate relative conditional effect
 proc phreg data = dat1 plots = none;
   where pop = "Original" and replicate = 0;
   by pop;
-  class agegroup(ref = "0-18") / param = ref;
-  model time * death(0) = treatment male risk_score agegroup / risklimits;
+  class comorbidity_score(ref = "0") / param = ref;
+  effect age_spl=spline(age / basis=tpf degree=3 naturalcubic);
+  model time * death(0) = treatment comorbidity_score risk_score male|age_spl / risklimits;
   ods output ParameterEstimates = rel_cond1(where = (parameter = "treatment"));
 run;
 

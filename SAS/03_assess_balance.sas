@@ -6,7 +6,8 @@ Descriptive summary table
 %pt_char(
   in_ds     = data.analysis_dat,
   out_ds    = sum_tbl1,
-  var_list  = male risk_score agegroup time death,
+  var_list  = male risk_score comorbidity_score age,
+  var_types = d cat cat cont,
   by        = pop,
   strata    = treatment,
   weight    = w
@@ -37,6 +38,9 @@ data data.summary_tbl;
     keep pop treatment __label __stat_char;
 run;
 
+/* Note that we have two apparantly identical formatted values in $labelk, which is
+not possible. This was achieved by using the invisible character Alt-255 in the 
+second "  0" instead of spaces. */
 proc format;
   value treatment
     0 = "Untreated"
@@ -46,13 +50,14 @@ proc format;
   value $ label
     "__n" = "^S = {font_weight = bold}Number of patients, N (%)"
     "male" = "^S = {font_weight = bold}Male, N (%)"
-    "risk_score" = "^S = {font_weight = bold}Risk score, median (Q1-Q3)"
-    "agegroup: title" = "^S = {font_weight = bold}Agegroup, N (%)"
-    "agegroup: 0-18" = "  0-18"
-    "agegroup: 19-64" = "  19-64"
-    "agegroup: 65+" = "  65+"
-    "time" = "^S = {font_weight = bold}Days to event, median (Q1-Q3)"
-    "death" = "^S = {font_weight = bold}Deaths, N (%)"
+    "age" = "^S = {font_weight = bold}Age, median (Q1-Q3)"
+    "risk_score: title" = "^S = {font_weight = bold}Risk score, N (%)"
+    "risk_score: 0" = "  0"
+    "risk_score: 1" = "  1"
+    "comorbidity_score: title" = "^S = {font_weight = bold}Comorbidity score, N (%)"
+    "comorbidity_score: 0"    = "  0"
+    "comorbidity_score: 1-2"  = "  1-2"
+    "comorbidity_score: 3+"   = "  3+"
   ;
 run;
 
@@ -122,7 +127,7 @@ Standardized differences
   in_ds     = data.analysis_dat,
   out_ds    = sd_overall,
   group_var = treatment,
-  var       = male risk_score agegroup,
+  var       = male risk_score age comorbidity_score,
   weight    = w,
   by        = pop
 );
@@ -132,7 +137,7 @@ Standardized differences
   in_ds     = data.analysis_dat,
   out_ds    = sd_strata,
   group_var = treatment,
-  var       = risk_score agegroup,
+  var       = risk_score age comorbidity_score,
   weight    = w,
   by        = pop male
 );
@@ -188,22 +193,22 @@ ods pdf close;
 Empirical CDF
 *******************************************************************************/
 
-/* Calculate empirical CDF of risk_score for treated and untreated patients 
+/* Calculate empirical CDF of age for treated and untreated patients 
 in each analysis. */
 %empirical_cdf(
   in_ds   = data.analysis_dat,
   out_ds  = cdf_overall,
-  var     = risk_score,
+  var     = age,
   strata  = pop treatment, 
   weight  = w
 );
 
-/* Repeat, now in stratas of the variable agegroup. */
+/* Repeat, now in stratas of the variable male. */
 %empirical_cdf(
   in_ds   = data.analysis_dat,
   out_ds  = cdf_strata,
-  var     = risk_score,
-  strata  = pop agegroup treatment, 
+  var     = age,
+  strata  = pop male treatment, 
   weight  = w
 );
 
@@ -212,7 +217,7 @@ data data.empirical_cdf;
   format strata $10.;
   set cdf_overall(in = q1) cdf_strata(in = q2);
   if q1 then strata = "overall";
-  if q2 then strata = "agegroup";
+  if q2 then strata = "male";
 run;
 
 ods pdf file="&path_output/empirical_cdf.pdf" style = statistical pdftoc = 1;
@@ -220,16 +225,16 @@ ods pdf file="&path_output/empirical_cdf.pdf" style = statistical pdftoc = 1;
   proc sgpanel data = cdf_overall;
     panelby pop / onepanel;
     step x = __x y = __cdf / group = treatment;
-    colaxis label = "Risk score";
+    colaxis label = "Age";
     rowaxis label = "CDF";
     keylegend / title = "";
     format treatment treatment.;
   run;
  ods proclabel = "Stratify by agegroup";
   proc sgpanel data = cdf_strata;
-    panelby pop agegroup / onepanel layout = lattice;
+    panelby pop male / onepanel layout = lattice;
     step x = __x y = __cdf / group = treatment;
-    colaxis label = "Risk score";
+    colaxis label = "Age";
     rowaxis label = "CDF";
     keylegend / title = "";
     format treatment treatment.;

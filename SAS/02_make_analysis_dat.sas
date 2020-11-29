@@ -1,8 +1,9 @@
 
 /* Estimate ps's using logistic regression. */
 proc logistic data = data.population noprint;
-  class agegroup(ref = "0-18") / param = ref;
-  model treatment(ref = "0") = male risk_score agegroup / risklimits;
+  class comorbidity_score(ref = "0") / param = ref;
+  effect age_spl=spline(age / basis=tpf degree=3 naturalcubic);
+  model treatment(ref = "0") = comorbidity_score risk_score male|age_spl / risklimits;
   output out = ps(drop = _level_) prob = ps;
 run;
 

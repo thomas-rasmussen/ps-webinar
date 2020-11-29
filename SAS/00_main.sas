@@ -1,6 +1,7 @@
 
 /* Path to webinar folder */
-%let path_main = S:\Thomas Rasmussen\github_repos\ps-webinar;
+%let path_main = ;
+/*%let path_main = S:\Thomas Rasmussen\github_repos\ps-webinar;*/
 
 /* Paths to subfolders */
 %let path_syntax = &path_main\SAS;

@@ -26,7 +26,6 @@ library("here")
 library("data.table")
 library("devtools")
 library("dplyr")
-library("emo")
 library("ggdag")
 library("ggplot2")
 library("ggridges")
@@ -37,7 +36,7 @@ library("patchwork")
 library("showtext")
 library("svglite")
 library("tidyr")
-library(RefManageR)
+library("RefManageR")
 
 # Modified Cite function where options are set and brackets are removed
 cite_mod <- function(...) {
@@ -81,14 +80,13 @@ cumulative_incidences <- fread(here("data", "cumulative_incidences.csv"))
 empirical_cdf <- fread(here("data", "empirical_cdf.csv")) %>%
   rename(variable = `__variable`, x = `__x`, cdf = `__cdf`) %>%
   mutate(
-    strata_agegroup = case_when(
-      agegroup == "" ~ "Overall",
-      agegroup == "0-18" ~ "Agegroup: 0-18",
-      agegroup == "19-64" ~ "Agegroup: 19-64",
-      agegroup == "65+" ~ "Agegroup: 65+"
+    strata_male = case_when(
+      is.na(male) ~ "Overall",
+      male == 0 ~ "Female",
+      male == 1 ~ "Male",
     )
   )  %>%
-  select(-c("strata", "agegroup"))
+  select(-c("strata", "male"))
 
 # induced_absolute_effects
 induced_absolute_effects <- fread(
@@ -110,15 +108,14 @@ relative_effect_estimates <- fread(
   ) %>%
   mutate(
     hr_ci = paste0(
-      round(HazardRatio, 3), 
+      formatC(HazardRatio, format = "f", digits = 3),
       " (", 
-      round(HRLowerCL, 3), 
+      formatC(HRLowerCL, format = "f", digits = 3), 
       " - ",
-      round(HRUpperCL, 3),
+      formatC(HRUpperCL, format = "f", digits = 3),
       ")"
     )
-  ) %>%
-  select(c("pop", "effect", "var_est",  "hr_ci"))
+  )
   
 # standardized_differences
 standardized_differences <- fread(
@@ -137,18 +134,28 @@ standardized_differences <- fread(
 # summary_tbl
 summary_tbl <- fread(here("data", "summary_tbl.csv")) %>%
   rename(label = `__label`, stat = `__stat_char`) %>%
-  mutate(stat = ifelse(is.na(stat), "", stat)) %>%
+  mutate(
+    stat = ifelse(is.na(stat), "", stat),
+    pop = case_when(
+      pop == "ATE-weighted" ~ "ate",
+      pop == "Original" ~ "pop",
+      pop == "ATT-weighted" ~ "att",
+      pop == "Matched" ~ "matched"
+    )
+  ) %>%
+  pivot_wider(names_from = c(pop, treatment), values_from = stat)  %>%
   mutate(
     label = case_when(
-      label == "__n" ~ "N (%)",
+      label == "__n" ~ "Number of patients, N (%)",
       label == "male" ~ "Male, N (%)",
-      label == "risk_score" ~ "Risk score, median (Q1;Q3)",
-      label == "agegroup: title" ~ "Agegroup, N (%)",
-      label == "agegroup: 0-18" ~ "  0-18",
-      label == "agegroup: 19-64" ~ "  19-64",
-      label == "agegroup: 65+" ~ "  65+",
-      label == "time" ~ "Time to event, median (Q1;Q3)",
-      label == "death" ~ "Deaths, N (%)",
+      label == "age" ~ "Age, median (Q1;Q3)",
+      label == "comorbidity_score: title" ~ "Comorbidity score, N (%)",
+      label == "comorbidity_score: 0" ~ "  0",
+      label == "comorbidity_score: 1-2" ~ "  1-2",
+      label == "comorbidity_score: 3+" ~ "  3+",
+      label == "risk_score: title" ~ "Risk score, N (%)",
+      label == "risk_score: 0" ~ "  0",
+      label == "risk_score: 1" ~ "  1",
       TRUE ~ as.character(label)
     )
   )
@@ -204,32 +211,46 @@ Slides:
 
 ???
 
-Some quick notes on the slides that might be of interest for R users with git/GitHub experience. The slides are made with the `xaringan` package in R, which is an R Markdown extension based on the remark.js JavaScript library. Furthermore, the slides are hosted directly from the GitHub repository using GitHub Pages.
+Quick notes on the slides: they are made with the `xaringan` package in R, which is an R Markdown extension based on the remark.js JavaScript library. Furthermore, the slides are hosted directly from the GitHub repository using GitHub Pages.
 
 Note that you can press "p" to toggle presenter notes on/off, and "o" to see a tile overview of all the slides.
 
 ---
 
-## Population with disease
+## Running example
 
 ```{r dag}
 
 coords <- list(
-  x = c(treatment = 0, male = 1, agegroup = 1, risk_score = 1, death = 2),
-  y = c(treatment = 0, male = 1, agegroup = 2, risk_score = 3, death = 0)
+  x = c(
+    treatment = 0,
+    male = 1, age = 1,
+    risk_score = 1.5,
+    comorbidity_score = 1,
+    death = 2
+  ),
+  y = c(
+    treatment = 0,
+    male = 1,
+    age = 2,
+    risk_score = 3,
+    comorbidity_score = 3,
+    death = 0
+  )
 )
 
 labels <- list(
   treatment = "Treatment", 
-  male = "Male", 
-  agegroup = "Agegroup", 
+  male = "Sex", 
+  age = "Age", 
   risk_score = "Risk score", 
-  death = "Death"
+  comorbidity_score = "Comorbidity score", 
+  death = "All-cause mortality"
 )
 
 dag <- dagify(
-  death ~ treatment + risk_score + agegroup + male,
-  treatment ~ risk_score + agegroup + male,
+  death ~ treatment + risk_score + age + male + comorbidity_score,
+  treatment ~ age + male + comorbidity_score,
   labels = labels,
   coords = coords
 )
@@ -242,11 +263,11 @@ ggdag(dag, node = TRUE, text = FALSE, use_labels = "label") +
 
 ???
 
-We will structure the presentation around a running example using simulated data. At the end of the presentation we present how the analyses were done in SAS.
+The presentation is structured around a running example using simulated data. At the end of the presentation we will look at how this was implemented in SAS, and what SAS-macros were used to help facilitate the analyses.
 
-We start with some hypothesis of interest. For our running example we imagine we have some population of patients with a particular disease, that might or might not get treated for the disease. The efficacy of the treatment to lower mortality in patients has not yet been well-established, so we want to conduct a new study investigating whether or not this is the case.
+For our running example we imagine we have some population of patients with a particular disease, that might or might not get treated after being diagnosed. The efficacy of the treatment to lower 1-year all-cause mortality is not well-established, so we want to conduct a new, and hopefully better, study where we investigating whether or not this is the case.
 
-As we do in all our research, we start by clearly establishing the causal assumptions we are going to base the study on. Based on a priory knowledge we hypothesize that the age, sex, and value of some fancy established risk score, influences both the treatment and mortality, and as such can confound the treatment effect on mortality if not properly handled. Here, we will illustrate our causal assumptions with a DAG.
+We start out by trying to establish our causal assumptions using a DAG. Based on a priori knowledge we will assume that age, sex, and existing comorbidities influences both the treatment and all-cause mortality. We will summarize existing comorbidities in a comorbidity score, eg the Charlson Comorbidity Index. Furthermore, we know that some established risk score is a risk factor for all-cause mortality, but we are somewhat certain that it does not affect treatment. Finally, we also assume that there is interaction between age and sex, but we can't incorporate this assumption in a DAG.
 
 ---
 
@@ -254,30 +275,28 @@ As we do in all our research, we start by clearly establishing the causal assump
 
 - Randomized controlled trials (RCT)
 
-  - pros: Gold standard, no unmeasured confounding
+  - Pros: gold standard, no unmeasured confounding
   
-  - cons: Often infeasible, unethical and/or expensive 
+  - Cons: often infeasible, unethical and/or expensive 
 
 - Observational studies:
 
-  - pros: Fast and cheap compared to RCT
+  - Pros: fast and cheap compared to a RCT
   
-  - cons: Unmeasured confounding
+  - Cons: unmeasured confounding
   
 
 Propensity score (PS) methods can be used to mimic RCT
 
 ???
 
-So what type of study design can we use to test our hypothesis?
+So what general types of study designs can we use to test our hypothesis that the treatment does actually lowers all-cause mortality?
 
-An RCT is considered the gold standard. In an RCT we would randomly allocate the treatment to patients. Because of this, the distribution of our confounders would be similar in both treatment groups, and we would not have to worry about confounding; we could simply compare the number of deaths in each treatment groups. Unfortunately RCT's are often infeasible, unethical and/or expensive.
-If we know that the treatment probably helps the patient's it would be unethical to withhold it.
+A RCT is considered the gold standard. In a RCT we would randomly allocate the treatment or a placebo to patients. Because of this randomization of the treatment, the multivariate distribution of patient characteristics would be similar in both treatment groups, and we would not have to worry about confounding; we could simply compare the number of deaths in each treatment group. Unfortunately RCT's are often infeasible, unethical and/or expensive.
 
-On the other hand we could conduct a observational study. The treatment has been used in practice for some time, and we know we can collect the data we need from registries at our disposal. Doing this would be faster and cheaper than conducting a RCT. Although, since treatment is not given randomly in practice, there will probably be systematic differences in patients characteristics between the treatment groups. If we do not take account of this in our analyses we will get a biased estimate of the treatment effect per our causal assumptions.
+On the other hand we could conduct an observational study. Lets assume that the treatment has been used in practice for some time, and we know we can collect data on treatment, covariates and the outcome from registries at our disposal. Doing this would probably be faster and cheaper than conducting a RCT. Although, since treatment is not given at random in practice, there will probably be systematic differences in patients characteristics between the treatment groups that we need to take into account in our analysis. Furthermore, we can usually only account for *observed* confounding, and we will have to argue about the reasonability of our causal assumptions ensuring that there is no unmeasured confounding.
 
-Ideally we would do an RCT, but since that is not possible we will instead do an observational study. So how are we going to handle confounding in our analysis?
-In this presentation we will introduce propensity score methods as a way of imitating an RCT, in the sense that we create a matched or weighted pseudo-population using the the so-called propensity score, in which there is no observed confounding, ie the pseudo-population will look like it is from an RCT. We can then directly compare outcomes in this pseudo-population as we would in an RCT.
+Ideally we would do a RCT, but since that is not possible we will instead imagine that we choose to conduct an observational study. So how are we going to handle the confounding we assume will be present according to our causal assumptions? In this presentation we will introduce propensity score methods as a way of imitating an RCT, in the sense that we create a matched or weighted pseudo-population using the the so-called propensity score, in which there is no observed confounding, ie the pseudo-population will look like it is from an RCT. We can then directly compare outcomes in this pseudo-population as we would in an RCT.
 
 ---
 
@@ -288,12 +307,12 @@ In this presentation we will introduce propensity score methods as a way of imit
 population %>%
   slice(1:10) %>%
   gt()
-  
+
 ```
 
 ???
 
-At this point we are ready to collect data for our study (ignoring the fact that we should of course develop a detailed statistical analysis plan first in a real study), so we use our favorite registries to establish a population of 10,000 patients with a diagnosis of the disease. Furthermore we find information on our confounders. We are interested in 1-year mortality, so patients are censored after 1-year of follow-up. Because we have super-registries in our imaginative example we have no other sources of censoring in the data.
+So lets imagine we collect the needed information on a population of `r format(nrow(population), big.mark = ",")` patients with the diagnosis. We want to treat the outcome as a time-to-event outcome, and we are interested in 1-year all-mortality, so we collect data on time-to-death and censor patients after 1-year of follow-up if they have not yet died. Because we have super-registries in our imaginative example, we actually don't have other sources of censoring.
 
 Here we show an excerpt of our cleaned data. 
 
@@ -303,13 +322,15 @@ Here we show an excerpt of our cleaned data.
 
 - male: 0 = female, 1 = male, 
 
-- risk_score: Continuous value of risk score at diagnosis
+- age: age at diagnosis
 
-- agegroup: age at diagnosis
+- risk_score: Risk score at diagnosis. 0 or 1.
 
-- time: Days to death after disease diagnosis.
+- comorbidity score at diagnosis. 0, 1-2 or 3+.
 
-- death: Event indicator. Patients are censored after 1 year of follow-up.
+- time: Days of follow-up after diagnosis.
+
+- death: Event indicator at the the end of follow-up. 0 if patient censored after 365 days, 1 if patient died at end of follow-up.
 
 ---
 
@@ -318,26 +339,20 @@ Here we show an excerpt of our cleaned data.
 ```{r dat-summary}
 
 summary_tbl %>%
-  filter(
-    pop == "Original" & 
-    !label %in% c("Time to event, median (Q1;Q3)", "Deaths, N (%)")) %>% 
-  select(-pop) %>% 
-  pivot_wider(
-    names_from = treatment, 
-    names_prefix = "treatment_", 
-    values_from = stat
-  ) %>%
+  select(c(label, pop_0, pop_1)) %>% 
   gt(rowname_col = "label") %>%
   cols_label(
-    treatment_0 = "Untreated",
-    treatment_1 = "Treated"
+    pop_0 = "Untreated",
+    pop_1 = "Treated"
   )
 
 ```
 
 ???
 
-To get a first impression of the data we make have collected, we make a descriptive summary of patient characteristics in the population. We see that half the patients get the treatment, but that there are differences in patients characteristics. We worry that these differences might confound our estimate of the treatment effect on mortality. We want to use PS methods to make a new pseudo matched/weighted population, where we have remove this potential confounding, so that we can estimate the treatment effect directly.
+To get a first impression of the data we have collected, we make a descriptive summary of patient characteristics in our population. We see that about half of the patients get the treatment, and that there are differences in the distribution of several patients characteristics, namely all of our assumed confounders. As we had also assumed, it does not look like the risk score is affecting treatment, at least not when we look at the marginal distribution of the risk score.
+
+What we want to do is to use PS methods to make a new matched/weighted pseudo population, where there is no imbalance in the distribution of confounders, and then estimate the treatment effect directly in that population.
 
 ---
 
@@ -351,11 +366,11 @@ Treatment indicator $Z$:
 
 Pair of potential outcomes:
 
-- Time-to-event under no treatment: $Y_0$
+- (time-to-event, event) under no treatment: $Y_0 = (T_0, D_0)$
   
-- Time-to-event under treatment: $Y_1$
+- (time-to-event, event) under treatment: $Y_1 = (T_1, D_1)$
 
-Observed time-to-event: $Y = ZY_1 + (1-Z)Y_0$
+Observed (time-to-event, event): $Y = ZY_1 + (1-Z)Y_0$
 
 ???
 
@@ -363,9 +378,9 @@ Before we go on we need to introduce some concepts that can be used to conceptua
 
 First, we introduce the potential outcomes framework.
 
-Assume we have two possible treatments. Each subject has a pair of potential outcomes (time-to-events); the outcome under no treatment $Y_0$, and the outcome under treatment $Y_1$. Only one of the potential outcomes is observed; the outcome corresponding to the actual treatment received. The other outcome is a potential/unobserved outcome: the outcome that would have happened had the subject been given the other treatment.
+Assume we have two possible treatments. Each subject has a pair of potential outcomes; the outcome under no treatment $Y_0 = (T_0, D_0)$, and the outcome under treatment $Y_1 = (T_1, D_1)$. Here, $T_z$ is the time-to-event under treatment $Z=z$, and $D_z$ the event indicator. Only one of the potential outcomes is observed; the outcome corresponding to the actual treatment received. The other outcome is a potential/unobserved outcome: the outcome that would have happened had the subject been given the other treatment.
 
-The observed outcome can be written as a combination of the two potential outcomes. 
+We can imagine the observed outcome as a combination of the two potential outcomes $Y = ZY_1 + (1-Z)Y_0$ (maybe with some slight abuse of notation here, as we are working with time-to-event outcomes).
 
 ---
 
@@ -387,61 +402,58 @@ population %>%
 
 ???
 
-We can try to illustrate this in our example data, by adding columns with information on potential outcomes. As we can see we only observe the potential outcome on the treatment that was actually received.
+We can try to illustrate this in our example data, by adding columns with information on potential outcomes. As we can see, we only observe the potential outcome under the treatment that was actually received, while we have missing information on the potential outcome under the treatment that was not observed.
 
-Lets imagine that we did actually have data on all potential outcomes for each patient. How would we actually define "the treatment effect"? A natural way would be to compare potential outcomes for each patient eg $Y_1 - Y_0$, and then estimate the treatment effect as the average effect $E[Y_1 - Y_0]$, which is exactly how the average treatment effect is defined!
+Lets imagine that we did actually have data on all potential outcomes for each patient. How would we actually define "the treatment effect"? 
 
 ---
 
 ## Average treatment effect (ATE)
 
-Generally: 
+Continuous and dichotomous outcomes: 
 
 - Treatment effect: $Y_1 - Y_0$ (or $Y_1 / Y_0$)
 
 - Average treatment effect (ATE): $E[Y_1 - Y_0]$ ( $E[Y_1/Y_0]$ )
 
-Time-to-event outcome definitions of ATE:
+Time-to-event outcome:
 
-- Risk difference at time $t$: $F_{Y_1}(t) - F_{Y_0}(t)$
+- Absolute ATE - Risk difference at time $t$: $F_{Y_1}(t) - F_{Y_0}(t)$
 
-- Hazard ratio at time $t$: $\lambda_{Y_1}(t) / \lambda_{Y_0}(t)$
+- Relative ATE - Hazard ratio at time $t$: $\lambda_{Y_1}(t) / \lambda_{Y_0}(t)$
 
 ???
 
-Usually the treatment effect is defined as $Y_1 - Y_0$, ie as the difference in potential outcomes. But if a relative effect is of interest the treatment effect could also be defined as eg $Y_1 / Y_0$.
+If we start out by imagining we have a dichotomous or continuous outcome,
+it would be natural to define the treatment effect as $Y_1 - Y_0$, ie as the difference in potential outcomes. If a relative effect is of interest the treatment effect could also be defined as eg $Y_1 / Y_0$.
 
-The average treatment effect is then defined as $E[Y_1 - Y_0]$ (or $E[Y_1 / Y_0]$), the average effect of moving an entire population from untreated to treated (at the same time).
+The average treatment effect (ATE) would then be defined as $E[Y_1 - Y_0]$ (or $E[Y_1 / Y_0]$): the average effect of moving an entire population from untreated to treated (at the same time).
 
-For time-to-event outcomes these definitions of ATE is not as useful. The ATE would be the mean difference/ratio in survival time, but for time-to-event outcomes we are often more interested in the absolute difference in risk of the outcome within a specified duration of follow-up time $F_{Y_1}(t) - F_{Y_0}(t)$, or the relative effect of treatment on the hazard of the outcome $\lambda_{Y_1}(t) / \lambda_{Y_0}(t)$. For these reason we modify the definition of ATE for time-to-event outcomes to reflect this. 
+This definition makes a lot of sense for continuous and dichotomous outcomes, but for time-to-event outcomes, these definitions are not that meaningful. Even if we had no censoring, the ATE would be a mean difference/ratio of time-to-events, which is usually not of interest. On top of that, we need to be able to handle the incomplete nature of our outcome data. 
 
-We can imagine we have two potentially observable survival curves, one that would have been observed had all patients gotten the treatment, and one that would have been observed had all patient not gotten the treatment. We would then compare these potential curves by either estimating the absolute risk difference, or by pooling the two sets of potential outcomes and regress the hazard of the outcome on an indicator variable denoting treatment status. 
+A better definition of the ATE would be as the absolute difference in risk of the outcome within a specified duration of follow-up time $t$: $F_{Y_1}(t) - F_{Y_0}(t)$, or as the relative effect of treatment on the hazard of the outcome $\lambda_{Y_1}(t) / \lambda_{Y_0}(t)$. So we will define the absolute/relative ATE as such. 
 
-We will call these modified definitions for average treatment effects. 
+We can imagine we have two potentially observable survival curves, one that would have been observed had all patients gotten the treatment, and one that would have been observed had all patient not gotten the treatment. We would then compare these potential curves by either estimating the absolute risk difference at some time-point, or by pooling the two sets of potential outcomes and regress the hazard of the outcome on an indicator variable denoting treatment status. 
 
 ---
 
 ## Estimate treatment effect in RCT
 
-Randomization $=>$ $F_{Y_i}(t) \leftarrow F_{Y|Z = i}(t)$
+Randomization $=> F_{Y_i}(t) \leftarrow F_{Y|Z = i}(t)$
 
-$F(t) = 1- S(t)$, estimate S(t) with Kaplan-Meier estimator.
+All-cause mortality $=>$ no competing risks $=> F(t) = 1- S(t)$, estimate S(t) with Kaplan-Meier estimator.
 
 Estimate relative hazard using Cox regression.
 
 ???
 
-So how would we actually do this analysis in an RCT?
+So how would we estimate the ATE in a RCT? In that case, the treatment would have been randomly allocated, so we can estimate the risk at time $t$ had everybody gotten a certain treatment, by simply using the patients who actually got that treatment. Note that our outcome of interest is all-cause mortality, so $F(t) = 1- S(t)$, and we can simply estimate $S(t)$ using the Kaplan-Meier estimator.
 
-Treatment is randomly allocated in an RCT, so we can estimate the risk at time t had everybody gotten a certain treatment, by simply using the patients who actually got that treatment. 
-
-To estimate the risk at time $t$, note that $F(t) = 1- S(t)$. Furthermore, we usually have censored data, so we will estimate $S(t)$ using the Kaplan-Meier estimator.
-
-To estimate the hazard ratio, we will simply pool the observations and use crude Cox regression.
+To estimate the hazard ratio, we would pool the observations and use crude Cox regression using the treatment indicator as the only independent variable.
 
 ---
 
-## Analyze as RCT
+## Estimate treatment effect in RCT
 
 ```{r analysis-rct}
 
@@ -454,7 +466,7 @@ dat1 <- cumulative_incidences %>%
 risk_diff_1y <- absolute_effect_estimates %>%
   filter(time == 365 & pop == "Original") %>%
   mutate(risk_diff_pct = round(100 * cum_inc_diff, 1)) %>%
-  pull(risk_diff_pct) 
+  pull(risk_diff_pct) %>% formatC(format = "f", digits = 3)
 
 mar_hr <- relative_effect_estimates %>%
   filter(pop == "Original" & effect == "Marginal" & var_est == "sandwich") %>%
@@ -465,26 +477,34 @@ dat1 %>%
   geom_step() +
   theme_classic() +
   scale_colour_manual(values = cvd_colours) +
-  scale_x_continuous(expand = c(0, 0)) +
-  scale_y_continuous(expand = c(0, 0)) +
+  scale_x_continuous(expand = c(0, 10), breaks = c(0, 100, 200, 300, 365)) +
+  scale_y_continuous(expand = c(0, 0), labels = scales::percent) +
   labs(
     x = "Days since diagnosis",
-    y = "Mortality risk",
+    y = "All-cause mortality risk",
     group = NULL,
     colour = NULL
   ) +
   theme(legend.position = c(0.9, 0.2)) +
   theme_trans +
-  annotate("text", x = 10, y = 0.9, label = glue("1-year risk difference =  {risk_diff_1y}%"), hjust = 0) +
-  annotate("text", x = 10, y = 0.8, label = glue("HR = {mar_hr}"), hjust = 0)
+  annotate(
+    "text", label = glue("1-year risk difference =  {risk_diff_1y}%"), 
+    x = 10, y = 0.7, hjust = 0, vjust = 1
+  ) +
+  annotate(
+    "text", label = glue("HR = {mar_hr}"), 
+    x = 10, y = 0.6, hjust = 0, vjust = -1
+  )
 
 ```
 
 ???
 
-Going back to our example, lets pretend its from an RCT for a moment, and estimate the 1-year risk difference and the relative hazard ratio.
+Going back to our example, lets pretend its from a RCT for a moment, and estimate the absolute and relative ATE one year after diagnosis.
 
-Our data is not from an RCT though, and we need to handle confounding. We would like to be able to do the analyses analogously to an RCT as we just did, and we will get back to how we can do this using PS methods.
+We see that the cumulative incidence curves are more or less identical and that there does not seem to be any treatment effect on either scale.
+
+Our data is not from an RCT though. We would like to be able to do the analyses analogously to how we would analyze a RCT as we just did, and we will get back to how we can do this using PS methods. But before we move on to define what a propensity score is and how we can use them, we need to introduce some additional concepts.
 
 ---
 
@@ -500,51 +520,57 @@ $$E[Y_1 - Y_0 | Z = 1]$$
 
 ???
 
-A related measure of effect is the average treatment effect in the treated $E[Y_1 - Y_0 | Z = 1]$. The ATT is the ATE among the patients who actually got the treatment. 
+A related measure of effect is the average treatment effect in the treated (ATT): $E[Y_1 - Y_0 | Z = 1]$.
 
-In our modified definitions for time-to-event outcomes, we can again imagine we have two potentially observable survival curves, now just restricted to patients who got the treatment.
+In our modified ATE definitions for time-to-event outcomes, we can again imagine we have two potentially observable survival curves, now just restricted to potential outcomes for patients who actually got the treatment.
 
-It is important to understand the concept of ATE and ATE. In a RCT they are the same since we are randomly allocating treatment, but this is not the case when we do observational research, where other mechanisms determine whether or not treatment is given. There is no reason to expect that the ATE and the ATT will coincide in an observational study. Since PS methods can be used to estimate both the ATT and the ATE, it is important to distinguish between the two.
+In a RCT, the ATE and ATT is the same, since we are randomly allocating the treatment. The population of treated patients is a random subset of the whole population, so the treatment effect will be the same in either, ie the ATE and ATT is the same. But this is not generally the case in observational studies, where different mechanisms determine whether or not treatment is given or withheld. There is no reason to expect that the ATE and the ATT will coincide in an observational study. It might be, for example, that the treatment is more likely to be given to patients who will benefit from the treatment, and more likely to be withheld from patients who will not benefit from it. If this is the case, the ATT would probably show a greater beneficial effect than the ATE, since the ATE is trying to estimate the average effect among a larger group of people where the treatment effect is less beneficial on average.
+
+Since PS methods can be used to estimate both the ATT and the ATE, it is important to distinguish between the two.
 
 ---
 
 ## ATE or ATT?
 
-Estimate ATE or ATT? Depends on context.
+Estimate ATE or ATT? Depends on study question.
 
-- Treatment is a healthy diet, plenty of sleep, and an extensive training regime: probably ATT
+- Treatment is "new drug" versus "old drug": probably ATE
 
-- Both treatments could easily be given to patients, eg taking/not taking a pill: probably ATE.
+- Pregnant women with depression,  treatment is antidepressants: probably ATT
 
 ???
 
-So should we estimate the ATT or the ATE in an observational study? It depends on the study question.
+So should we estimate the ATE or the ATT in an observational study? It depends on the study question of interest.
 
-Lets look at our example. Lets imagine that the treatment in question is a healthy diet, plenty of sleep, and an extensive training regime. Some patients will literally rather die than elect to follow such a treatment. We are probably mostly interested in the ATT in this case: what is the effect of treatment among the patients who elect to follow the treatment instead of opting out.
+Lets imagine that our treatment is a "new drug" versus "old drug" scenario. In this case we are often interested in knowing if the new drug is better than the old drug and should replace it as the treatment of choice. If this is the case we want to estimate the ATE, since the ATE is the average effect of switching everybody from the old drug to the new drug at the same time.
 
-If both treatments are easily given, eg take / don't take a a pill, then we could easily apply the treatment to all patients, so the ATE is probably of most interest.
+Now lets instead imagine a more specific example where we have a population of pregnant women with depression, and the treatment is antidepressants versus no treatment. In general, we do not want to give drugs to pregnant women unnecessarily, so we are probably not interested in whether or not we should give all depressed women antidepressants. We are likely more interested in the effect of antidepressants among the women who do actually get them. In that case the ATT is what we are interested in.
 
 ---
 
-## Marginal and conditional treatment effects
+## Marginal and conditional effects
 
-- Conditional treatment effect: effect on individual level
+- Conditional effect: average effect on "individual" level
 
-- Marginal treatment effect: effect on population level
+- Marginal effect: average effect on population level
 
 - Non-collapsible effect estimator: marginal effect $\neq$ conditional effect
 
 - The hazard ratio and odds-ratio are non-collapsible.
 
+- RCT/PS-analysis and regression effect estimates often not directly comparable!
+
 ???
 
-Another thing we need to consider is the concept of marginal and conditional effects. 
+Another complication that we need to consider is the concept of marginal and conditional effects. 
 
-A conditional effect is the average treatment effect at the individual level, of changing a patient's treatment status from untreated to treated. We often attain an estimate of a conditional effect by "smoothing" the effect across patients. This is what happens when we fit a regression model where we condition on confounders.
+A conditional effect is the average effect at the "individual" level (defined by the covariates conditioned on), of changing a patient's treatment status from untreated to treated. We often attain an estimate of a conditional effect by "smoothing" the effect across patients. This is what happens when we fit a regression model where we condition on confounders.
 
-A marginal effect is the average treatment effect at the population level, of changing the treatment status of the entire population at the same time. In an RCT we a directly comparing two populations that are equal, except in their treatment, this gives an estimate of the marginal effect.
+A marginal effect is the average effect at the population level, of changing the treatment status of the entire population at the same time. This is what we are estimating with the ATE/ATT in a RCT (and ps-analysis). We are directly comparing two populations that are equal, except in their treatment. This gives an estimate of the marginal effect.
 
-Intuitively you would expect that the marginal and the conditional effect should be the same. But unfortunately whether or not this is the case depends on the effect estimator. A collapsible effect estimator is an effect estimator for which the marginal and conditional effect coincide. Differences in means and risk effect estimators are examples of collapsible effect estimators. Non-collapsible effect estimators are effect estimators for which the marginal and conditional effect does not coincide. Both the hazard-ratio and odds-ratio effect estimators are non-collapsible effect estimators. 
+Intuitively, you might expect the marginal and the conditional effect to be the same. Unfortunately whether or not this is the case depends on the effect estimator. By definition, a collapsible effect estimator is an effect estimator for which the marginal and conditional effect coincide. The mean difference and risk difference are examples of collapsible effect estimators. Non-collapsible effect estimators are effect estimators for which the marginal and conditional effect does not coincide. The hazard-ratio and odds-ratio effect estimators are examples of non-collapsible effect estimators. The direction of the marginal and conditional effect is the same for non-collapsible effect estimators, but as the true effect becomes more extreme, the difference in the effects will also be more extreme. If the true effect is a null effect, the marginal and conditional effect will still coincide as a null effect.
+
+We will not go into more details about this confusing complication, but it is important to realize that this nuance exist. In observational research we often use non-collapsible effect estimators, eg hazard-ratios in Cox regression and odds-ratios in logistic regression. We need to be aware that we can not directly compare effect estimates from such models with hazard-ratio and odds-ratio effect estimates from RCT's, because we are not estimating the same same type of effect!
 
 ---
 
@@ -562,81 +588,108 @@ $$X \perp Z | PS$$
 
 Having defined all these concepts, we now move on to introduce propensity scores.
 
-The propensity score is the conditional probability of getting the treatment $Z$, given variables $X$.
+The propensity score is the conditional probability of treatment $Z$, given variables $X$.
 
-The PS is a so-called balancing score, meaning that among patients with the same PS, the multivariate distribution of $X$ is expected to be the same for both treated and untreated patients. 
+The PS is a so-called balancing score, ie given $PS$, $X$ and $Z$ are independent. This means that among patients with the same $PS$, the multivariate distribution of $X$ is expected to be the same for both treated and untreated patients.
 
-Because of this, if we use our confounders to estimate the PS, treated and untreated patients with the same PS is expected to have a similar distribution of confounders.
+Using this property one can show, that if we use our confounders as $X$, calculate the estimated $PS$, denoted $ps$, and then compare treated and untreated patients with the same estimated propensity score, the distribution of the confounders are expected to be the same.
 
 ---
 
-## Estimation of PS's
+## Estimation of propensity scores
 
 - True propensity score almost always unknown in observational studies.
 
-- Typically estimate using logistic regression
+- Typically estimated using logistic regression
 
-- Include all (potential) confounders in model
+- Include all (potential) confounders and predictors of outcome in PS model
 
-- We do not care about model fit or discrimination/calibration of the model. We care about balancing our confounders.
+- Exclude strong predictors of the exposure from the PS model
+
+- We do not care about goodness-of-fit tests or discrimination/calibration of the model. We only care about balancing our confounders.
 
 ???
 
-Before we move on to talk about how we can use the PS, lets talk about how to estimate it. In a standard RCT treatment is decided by chance, so the true PS is 0.5. But in an observational study, the mechanisms leading to treatment is unknown, so we do not know the true PS's. We have to estimate them instead.
+Before we introduce the different methods using the balancing score property of the propensity score, lets talk about how we can estimate $PS$. 
 
-This is usually done using logistic regression. We want to balance our confounders, so we need to include those as dependent variables in the model. If we have other variables we think might be confounders, we include those as well.
+In a standard RCT, treatment is decided by chance, so the true $PS$ is 0.5. But in an observational study, the mechanisms leading to treatment is unknown, so we do not know the true $PS$. We have to estimate them instead.
 
-So how do we evaluate our ps model? Normally we would look at goodness-of-fit test, how well the model is calibrated etc. But this is inappropriate in this scenario. You might, for example, think of a PS model as a prediction model, and develop a model with excellent discrimination and calibration properties. But if it does not balance the confounders, it does us absolutely no good. 
+Estimation of PS's is usually done using logistic regression. We want to balance the distribution of our confounders, so we need to include all our confounders in our PS model, or we will get a biased estimate of the treatment effect. Furthermore, we should include all predictors/risk-factors of the outcome. This will correct for chance imbalances of the predictor and can reduce the variance of the estimate of treatment effect. On the other hand, we should not include strong predictors of the exposure in the PS model, since we do not need to balance them and they can increase the variance of the treatment effect estimate.
+
+So how do we evaluate our PS model? Normally we would look at goodness-of-fit tests, or the calibration of the model and how well it discriminates. But this is inappropriate in this context. The only thing we care about is balancing the distribution of our confounders, everything else is irrelevant.
 
 We will get back to how to assess covariate balance later.
 
+---
+
+## Estimation of propensity scores
+
+Running example:
+
+  - Add all confounders and risk score in PS model
+  
+  - Add age as a restricted natural cupic spline
+  
+???
+
+So in our running example, we would include our confounders and our predictor of the outcome into the PS model, namely the variables age, sex, comorbidity score, and risk score. Age is a continuous variable and we will use a restricted cubic spline to estimate the correct functional form. We also include an interaction term of age and sex since we assume that there is age and sex interaction.
 ---
 
 ## Propensity score methods
 
 Broadly speaking:
 
-  - PS stratification `r emo::ji("-1")`
-  
-  - PS adjustment `r emo::ji("-1")`
+  - PS stratification
 
-  - PS matching `r emo::ji("+1")`
-  
-  - PS weighting `r emo::ji("+1")`
+  - PS adjustment
+
+  - PS matching
+
+  - PS weighting
 
 ???
 
-Broadly speaking there are 4 approached to using the PS to reduce confounding when estimating the treatment effect.
+Broadly speaking there are 4 approaches to using the balancing score property of the propensity score to handle confounding.
 
-We will not talk about PS stratification and PS adjustment in this presentation. They are, again broadly speaking, the traditional PS methods used to handle confounding, but both of the approaches can be problematic for different reasons we will not delve into here.
+We will not talk about PS stratification and PS adjustment in this presentation. They are, again broadly speaking, the traditionally used PS methods, but both of the approaches can be problematic for different reasons we will not delve into here.
 
-We will instead focus on ps matching and ps weighting.
+We will instead focus on PS matching and PS weighting.
 
 ---
 
 ## PS matching
 
-- Usually 1:1 matching untreated to treated patients.
+- Usually 1:1 matching untreated to treated patients
 
 - Permits estimation of the ATT
 
-- Reasonable way to do the matching:
+- One reasonable way to do the matching:
 
   - Nearest neighbor matching
   
-  - Match on logit(ps)
+  - Match on $logit(ps)$
   
-  - Use caliper: 0.2 times the standard deviation of logit(ps)
+  - Use caliper of 0.2 times the standard deviation of $logit(ps)$
   
   - Match with replacement
 
 ???
 
-PS matching entails forming matched sets of treated and untreated patient who have similar ps's. This can be done in different ways, but 1:1 matching untreated to treated patients is the usual approach. This permits estimation of the ATT in the matched sub-population by direct comparison of outcomes. 
+PS matching entails forming matched sets of treated and untreated patient who have similar $ps$'s. Individual patients with the same $ps$ might not have the exact same confounder values, but the *distribution* of the values is expected to be similar. So intuitively we can see that PS matching would result in a matched population where the distribution of confounders are similar for treated and untreated patients.
 
-Matching can be done in many different ways, but a reasonable approach is do nearest neighbor matching with replacement, matching on logit(ps) and using a caliper equal to 0.2 times the standard deviation of logit(ps). 
+PS matching can be done in many different ways, but 1:1 matching untreated to treated patients is the usual approach. This permits estimation of the ATT, since we are creating a matched population where we have paired each treated patient with an untreated patient that represents an estimate of the unobserved potential outcome for the treated patient.
 
-The SAS example uses a macro to do this.
+1:1 matching can be done in many different ways, but a reasonable approach is:
+
+- Nearest neighbor matching: We use the untreated patient with the $ps$ closest to the treated patient's $ps$ as the match.
+
+- Match on $logit(ps)$: The reason for this is technical so we won't go into details here, but doing this has been shown to have advantages in some scenarios.
+
+- Use a caliper: We should not only use the nearest neighbor as the match, we should also have a limit on how much of an absolute difference in $ps$'s we will tolerate when finding a match, since there is no guarantee we can find a proper match. A caliper equal to 0.2 times the standard deviation of $logit(ps)$ is commonly used, since it has been shown to work well in simulation studies.
+
+- Match with replacement: Matching without replacement is commonly used, but doing so requires us to have a vast pool of potential controls relative to the number of treated patients, or we won't be able to find suitable matches for all treated patients. Matching with replacement usually overcomes this issue. It does complicate estimation of a confidence interval for the treatment effect since we no longer have independent observations, but as we shall see later this is actually also the case when matching without replacement and when doing PS weighting, and we can handle this complication.
+
+Making a matched population is not trivial in practice, and is often done in horribly inefficient ways. In the SAS example we will use a very efficient macro to facilitate this process.
 
 ---
 
@@ -657,25 +710,82 @@ analysis_dat %>%
 
 ???
 
-Using the aforementioned SAS macro we can easily create a matched sub-population, for which an excerpt can be seen here.
+Here we can see an excerpt of a PS matched population using the above-mentioned SAS macro.
 
-We can see that, as expected, that just because a treated and untreated patients has almost identical ps's, that does not mean that they have equal patient characteristics. 
+We can see that, as expected, that just because a treated and untreated patient has almost identical ps's, that does not mean that they have equal confounder values.
 
 ---
 
 ## PS weighting
 
-- Use PS to create weighted pseudo-population where $X \perp Z$
+- Use $ps$ to create weighted pseudo-population where $X \perp Z$
 
   - ATE weights: $\frac{Z}{ps} +\frac{1-Z}{1-ps}$
-  
+
   - ATT weights: $Z + (1-Z)\frac{ps}{1-ps}$
-  
+
 ???
 
-PS weighting uses weights based on the ps to create a pseudo-population where $X \perp Z$. 
+PS weighting uses weights based on the $ps$ to create pseudo-populations where $X \perp Z$. 
 
-We will omit the technical details but on an intuitive level, the ATE weights both the treated and untreated patients so that both their confounder distribution matched that of the entire combined population. This permits estimation of the ATE in the pseudo-population. On the other hand the ATT weights weights the untreated patients so that their confounder distribution matches that of the treated population. As for ps-matching, this permits estimation of the ATT.
+Using the ATE weights, both the treated and untreated patients are weighted so that their confounder distribution match that of the combined population. Using ATE weights creates a pseudo population that is approximately twice as big as the original population, where we have estimated what the potential outcomes would have been had everyone been treated,and if no one had been treated. This permits estimation of the ATE.
+
+The ATE weights are also called Inverse Probability of Treatment (IPTW) weights, because we weight a patient with the inverse of the probability of the treatment they received. 
+
+Using the ATT weights, the untreated patients are weighted so that their confounder distribution matches that of the treated population. Using ATT weights creates a pseudo population of approximately twice the size of the number of treated patients, where we reweight the untreated patients so they can be used as estimates of what would have happened if the treated patients would have not been treated, which permits estimation of the ATT.
+
+---
+
+## PS weighting examples 
+
+- Only include sex in PS model
+
+- 50% untreated and treated patients
+
+- 50% untreated and 50% treated males
+
+$ps$ = 0.5 for all patients
+
+ATE weights: $\frac{Z}{ps} +\frac{1-Z}{1-ps} = \frac{Z}{0.5} +\frac{1-Z}{1-0.5} = 2$
+
+ATT weights: $Z + (1-Z)\frac{0.5}{1-0.5} = 1$
+
+???
+
+Lets imagine we only include sex in the PS model, and that we have 50% males among both the untreated and treated patients, and that we have 50% treated and untreated patients. The combined population will then also have 50% males, and we don't actually need to balance anything, we just need to upweight our treated and untreated patients so that each population is the same size as the combined population. Our PS model would give everyone a $ps$ of 0.5, since there's a 50% chance of being treated no matter what sex you are, and we can see that all patients would receive a weight of 2, resulting in a weighted population twice as big, where the sex distribution is unchanged, as it should be, and the treated and untreated populations are now twice as big, making both of them the same size as the combined population, which is also what we wanted.
+
+If we look at the ATT weights, we can see that this simple example would give both treated and untreated patients a weight of one, since the sex distribution is already balanced, and the untreated population is already the same size as the treated population.
+
+---
+
+## PS weighting examples 
+
+- Only include sex in PS model
+
+- 50% untreated and treated patients
+
+- 30% untreated and 70% treated males (as in running example)
+
+$ps = 0.7$ for men and $ps = 0.3$ for females
+
+ATE weights:
+
+- Treated males: 1.43
+- Treated females: 3.33
+- Untreated males: 3.33
+- Untreated females: 1.43
+
+ATT weights:
+
+- Untreated males: 2.33
+- Untreated females: 0.43
+
+???
+
+If we now imagine that there are 70% treated males and 30% untreated males, but there is still 50% treated and untreated patients, as in our running example.
+The $ps$ is now 0.7 for males and 0.3 for females. The combined population still has 50% males, so we need to downweight treated males and upweight treated females, to make that population look like the combined population. For the untreated population its the reverse. Men are underrepresented so we need to give them larger weights than untreated females to get a sex distribution that mirrors that of the combined population. This is reflected in the ATE weights, since treated males are going to have a weight of 1.43 and females will have a weight of 3.33 which is way bigger than 1.43 effectively downweighting treated men. Reversely, untreated men will have a weight of 3.33 and untreated women a weight of 1.43, effectively downweighting untreated females.
+
+For the ATT weights, treated patients will still have a weight of one, but we can see that untreated males will have a weight of 2.33 and untreated females will have a weight of 0.43, both upweighting untreated men, and downweighting untreated females at the same time.
 
 ---
 
@@ -695,7 +805,9 @@ analysis_dat %>%
 
 ???
 
-We can easily create the weighted populations by simply calculating the ATE and ATT weights for each patient. Excerpt of ATE weighted population seen here.
+We can easily create the weighted populations by simply calculating the ATE and ATT weights for each patient. Here is an excerpt of ATE weighted population.
+
+Since our PS model is relatively complicated it is not straight forward to understand the weights, but we can see that patient 4 has a high weight, which is probably strongly related to the fact that it is a treated female as in our simplified example.
 
 ---
 
@@ -707,7 +819,7 @@ We can easily create the weighted populations by simply calculating the ATE and 
 analysis_dat %>%
   filter(pop == "ATT-weighted") %>%
   select(-c("pop", "match")) %>%
-  rename(ate_weight = w) %>%
+  rename(att_weight = w) %>%
   slice(1:10) %>%
   gt() %>%
   tab_header("ATT-weighted population")
@@ -716,21 +828,23 @@ analysis_dat %>%
 
 ???
 
-Excerpt of the ATT-weighted population. Note that all treated patients have a weight of 1.
+Excerpt of the ATT-weighted population. Note that all treated patients have a weight of 1. We see many untreated females with low weights, which is to be expected since the females are way more predominant among the untreated compared to the treated, so we need to downweight them so match the sex distribution among the treated.
 
 ---
 
 ## Overlap in PS-distributions 
 
-- Feasibility of using PS-methods should be considered
+- Feasibility of using PS methods should be considered
 
-- Matching and weighting is not going to work well if insufficient overlap of ps-distributions
+- Need sufficient overlap of $ps$ distribution for treated and untreated patients
 
 ???
 
-We now know how PS-matching and PS-weighting works, so we will quickly talk about something that should be assessed even before making the matched/weighted population in a real study: is it even feasible to use PS-methods? 
+We have now introduced PS matching and PS weighting, but we should consider whether or not such analyses are even feasible.
 
-For PS-matching we need to find untreated patients with similar ps's, this requires sufficient overlap in the distributions of ps's. For weighting we are weighting the ps-distribution to match the distribution of some other population, so here we likewise need overlap of the ps-distributions for this to succeed. So we should compare the ps-distributions before deciding to use PS-methods, since it might be immediately clear that PS methods won't work.
+For PS matching we need to find untreated patients with $ps$'s similar to the treated patient's, so if the distribution of $ps$ for the untreated does not cover the distribution of $ps$ for the treated, we might not be able to find suitable matches. Likewise, re-weighting one $ps$ distribution to another requires overlap of these distributions.
+
+So we can assess the feasibility of a PS analysis by simply looking at the overlap in the distribution of $ps$ for treated and untreated patients. We should do this before anything else, since it might be immediately clear that a PS analysis won't work.
 
 ---
 
@@ -764,47 +878,13 @@ analysis_dat %>%
     panel.spacing = unit(1.5, "lines")
   ) +
   theme_trans +
-  coord_cartesian(xlim = c(-0.05, 1.05))
+  coord_cartesian(xlim = c(-0.05, 1.05), ylim = c(0, 4))
 
 ```
 
 ???
 
-We see a very nice overlap in the ps-distributions, so we don't expect to have problems with discarded treated patients using ps-matching, or extreme weights using ps-weighting.
-
----
-
-## Weight statistics
-
-- If PS-weighting is used, look at weights
-
-- Large weight are only problematic if they are large relative to the population size. For example:
-
- - Max weight = 10, N = 1 million. Irrelevant
- - Max weight = 10, N = 100. Not good!
-
-???
-
-If we are using PS-weighting we should look at the weights. Large weights are only problematic is they are large relative to the population size. If we have a weight of 10 in a population of 1 million we do not care, but a weight of 10 in a population of 100 would probably be very problematic.
-
----
-
-## Weight distribution
-
-```{r weight-stats}
-
-weight_stats %>% 
-  filter(pop %in% c("ATE-weighted", "ATT-weighted")) %>%
-  mutate(
-    treatment = factor(treatment, c(0, 1), c("Untreated", "Treated"))
-  ) %>%
-  gt()
-  
-```
-
-???
-
-We see no cause for concern here. 
+Returning to our example, we try plotting the $ps$ distribution for both the treated and untreated patients. We see that the distributions are far from similar, but there seems to be a sufficient overlap, even for small and large values of $ps$. We can see there might be some minor non-overlapping in the extreme ends of the distributions, but we do not think this will be a problem. 
 
 ---
 
@@ -818,23 +898,23 @@ We see no cause for concern here.
 
 - Positivity
 
-- Any additional outcome model assumptions
+- Any additional model assumptions
 
 ???
 
-At this point we have used different PS methods to obtain new populations where the problem of confounding has hopefully been removed. Before we talk about how to assess this by assessing covariate balance, lets stop for a moment and talk about the assumptions that the PS methods relies on.
+At this point we have used different PS methods to obtain new populations where we can directly compare outcomes as in a RCT to estimate the ATE and ATT. We have also looked at the $ps$ distribution to check that the PS analyses are feasible. Furthermore, we should be aware of what assumptions we are making in a PS analysis, and try to assess whether or not these assumptions are violated.
 
 ---
 
 ## Consistency
 
-Consistency: $Z = z => Y_{z} = Y$
+Consistency: $Z = z => Y = Y_{z}$
 
-Untestable 
+Untestable
 
 ???
 
-Consistency holds if the counterfactual outcome $Y_{z}$ is equal to the observed outcome $Y$ for patients with treatment $Z=z$, ie the potential outcome under the treatment that is actually received is the outcome we observe.
+Consistency holds if the observed outcome $Y$ is equal to the  counterfactual/potential outcome $Y_{z}$ for patients with treatment $Z=z$, ie the potential outcome under the treatment that is actually received is the outcome we observe.
 
 On an intuitive level this makes sense. If a patient is treated, we have to assume that we are observing the outcome under treatment. 
 
@@ -844,15 +924,15 @@ In our example lets assume the treatment is taking a drug. Then we are assuming 
 
 ---
 
-## Conditional exchangeability (No unmeasured confounding)
+## No unmeasured confounding
 
-No measured confounding
+We are assuming we have no unmeasured confounding
 
 Untestable
 
 ???
 
-We are assuming that we have no unmeasured confounding. If we have unmeasred confounders, they will not be balanced after ps-matching or weighting, and thus an unbiased estimate of the treatment effect will not be possible.
+We are assuming that we have no unmeasured confounding. If we have unmeasured confounders, they will not be balanced after ps-matching or weighting, and thus an unbiased estimate of the treatment effect will not be possible.
 
 ---
 
@@ -864,11 +944,11 @@ Untestable
 
 ???
 
-SUTVA is the assumption that there is no interference between subjects, ie that the counterfactual outcomes under a treatment for one subject does not depend on the other subjects' treatment values. 
+SUTVA is the assumption that there is no interference between subjects, ie that the counterfactual outcome under treatment for one subject does not depend on the other subjects' treatment values. 
 
 This assumption is also untestable.
 
-If we imagine that the patients in our study knew each other and one patient died causing some of the other patients to die from sorrow, then this assumption would be violated. 
+Imagine a study where that one patient under treatment died, and other patients who were treated found out, and as a result got so worried that they died from stress themselves, then SUTVA would be violated.
 
 ---
 
@@ -876,21 +956,21 @@ If we imagine that the patients in our study knew each other and one patient die
 
 Positivity: $0<PS<1$
 
-Extreme weights in ps-weighting and exclusion of treated patients in ps-matching indicates violation of this assumption.
+Extreme weights in PS weighting and exclusion of treated patients in PS matching indicates violation of this assumption.
 
 ???
 
 The positivity assumption is the assumption that there is a non-zero probability of both treatments for all patients.
 
-This assumption is also intuitively reasonable. If some patients have characteristics causing them to  always/never be treated, we can not find comparable patients with the other treatment that can be used to estimate "what would have happened had the patient been given the other treatment".
+This assumption is also intuitively reasonable. If some patients have characteristics causing them to always/never be treated, we can not find comparable patients with the other treatment that can be used to estimate "what would have happened had the patient been given the other treatment".
 
-If a lot of treated patients have been excluded from a matched population or we have extreme weights in our weighed populations this indicates that we have a problems with the positivity assumption.
+If a lot of treated patients have been excluded from a matched population or we have extreme weights in our weighted populations, this indicates that we have a problems with the positivity assumption.
 
 We will talk more about this later in the presentation.
 
 ---
 
-## Outcome model assumptions
+## Model assumptions
 
 - Additional outcome model assumptions has to be fulfilled
 
@@ -902,7 +982,7 @@ If any outcome model is specified, we need to assess all additional assumptions 
 
 For example, if we do Cox regression then we need to assess the proportional hazard assumption, and assume that we have independent censoring.
 
-Correct specification of the PS model ensures balance of the multivariate distribution of observed confounders. Strictly speaking this assumption is only sufficient, it is not a necessary assumption. If we can achieve balance in all confounders, we do not care whether or not the PS model is correctly specified!
+Correct specification of the PS model ensures balance of the multivariate distribution of (observed) confounders. Strictly speaking this assumption is only sufficient, it is not a necessary assumption. If we can achieve balance in all confounders, we do not care whether or not the PS model is correctly specified!
 
 ---
 
@@ -914,25 +994,21 @@ Correct specification of the PS model ensures balance of the multivariate distri
 
   - Fine-tune PS model 
 
-  - or review population exlusion/inclusion criterias
+  - review population exclusion/inclusion criterias
 
 - Repeat until balance!
 
-- Note that we have separated the design and analysis of the study as in an RCT!
+- Possible to separate design and analysis of study as in an RCT!
 
 ???
 
-We have now created our matched/weighted population, but before we estimate the treatment effect, we need to assess whether or not we have actually achieved covariate balance.
+We have created our matched/weighted population, the PS analysis seem feasible since we sufficient overlap in the $ps$ distributions, and we are aware of the assumptions we are making. Before we estimate the treatment effect, we also need to assess whether or not we have actually achieved covariate balance as we mentioned earlier. If we find that we have insufficient covariate balance, we should take steps to improve the balance before moving on to estimating the treatment effect.
 
-If we have insufficient covariate balance, we need take steps to improve the balance before moving on to estimating the treatment effect.
+Insufficient balance might be a result of the PS model not being sufficiently complex. This might be remedied by including continuous variables as splines, adding interaction terms etc.
 
-Insufficient balance might be caused because the ps-model is not sufficiently complex. This might be remedied by including continuous variables as splines or adding interaction terms.
+Another problem can be that the treatment groups are fundamentally incomparable, resulting in the positivity assumption being violated. Maybe it is necessary to go back to the definition of the study population and exclude specific types of patients who are always/never treated.
 
-Another problem can be that the treatment groups are fundamentally incomparable, resulting in the positivity assumption being violated. Maybe it is necessary to go back to the definition of the study population and excluding specific types of patients who are always/never treated.
-
-We repeat the process of refining our ps-model and checking ps balance until we are satisfied.
-
-Note that with this workflow we are separating the design and analysis phase of the study. We do not start analyzing the data until we have created a satisfying matched/weighted population. Just as in a RCT. 
+In an ideal world we would repeat this process until we have achieved covariate balance, before we move on to estimate the treatment effect. This would ensure that we have separated the design and analysis phase of the study, just as in a RCT. This is of course rarely what ends up happening in a real observational study, since there can be many different valid reasons for going back and changing something after the treatment effect has been estimated, but it is something that should be strived for nonetheless.
 
 ---
 
@@ -940,27 +1016,23 @@ Note that with this workflow we are separating the design and analysis phase of 
 
 How can we assess the covariate balance?
 
-- "Table 1" of weighted / matched population 
+- "Table 1" of weighted/matched population 
 
-- Look at at ps-distribution 
+- Look at $ps$ distribution after weighting/matching
 
 - Standardized differences
 
+- Look at weights
+
 - Empirical CDF
 
-We are assuming balance of the multivariate distribution of confounders!
-
-- Assess balance in stratas of confounders
-
-- Infeasible to do most scenarios. Do spot checks.
-
-- Probably need interaction terms in ps-model to achieve balance of the multivariate confounder distribution.
+We are assuming balance of the multivariate distribution of confounders. Assess balance in strata of confounders!
 
 ???
 
-So how do we assess the balance of our confounders? This can be done in many ways, some more informative than others. We will look at some of the common approaches. Note that we are assuming that the *mulitvariate* distribution of covariates are balanced, ie there should not only be balance in the marginal distribution of each separate covariate, but the multivariate distribution of $X$ should be balanced, ie there should be balance in all stratas defined by the covariates included in $X$. 
+So how do we assess the balance of our confounders? This can be done in many ways, some more informative than others. We will look at some of the common approaches. 
 
-Including interactions in the ps-model is probably needed to make this happen! This is usually infeasable to do in a real study, but we should at least do some spot checks.
+Note that we are assuming that the *multivariate* distribution of covariates are balanced, ie there should not only be balance in the marginal distribution of each separate covariate, but the multivariate distribution of $X$ should be balanced, ie there should be balance in all strata defined by the covariates included in $X$. This is infeasible to do in practice most of the time, but you should at least make some random checks.
 
 ---
 
@@ -968,19 +1040,19 @@ Including interactions in the ps-model is probably needed to make this happen! T
 
 - Highly subjective
 
-- Only compares means/medians/quartilies of distributions, not higher moments. Insufficient for continuous variables.
+- Only compares eg N (%) or median (Q1-Q3) of distributions, not higher moments. Insufficient for continuous variables.
 
 - Can be used to get a quick overview of the matched/weighted population.
 
-- If you calculate p-values to test balance we can't be friends.
+- Testing balance with p-values is not good.
 
 ???
 
-The first and worst way to assess covariate balance is to make a "Table 1" and compare the distribution of covariates in each treatment stata. This is a highly subjective way of assessing balance, and we are only comparing means of distributions. For continuous variables it is also not enough for mean/median/quartiles of the distribution to be the same, higher moments like the variance of the distribution also needs to be balanced.
+The most common way to assess covariate balance is to make a "Table 1" of the matched/weighted population and compare eg N (%) or median (Q1-Q3) of distributions. This is a highly subjective way of assessing balance, and for continuous variables it is also not enough, as higher moments of the distribution like the variance also needs to be balanced.
 
-That being said, we usually make a summary table anyway, since it is common to include the weighted/matched table when reporting the analysis, and the table can be used as a quick way to assess if something is very wrong with the matched/weighted populations.
+That being said, we usually make a summary table anyway, since it is common to include the weighted/matched summary table when reporting the analysis, and the table can be used as a quick way to assess if something is very wrong with the matched/weighted populations.
 
-Testing balance of each covariate using p-values is also not great. p-values are heavily affected by sample size, and everything will be "significantly imbalanced" if you have a large population. 
+Testing balance of covariates using p-values is also not great. p-values are heavily affected by sample size, and everything will be "significantly imbalanced" if you have a large population.
 
 ---
 
@@ -988,19 +1060,7 @@ Testing balance of each covariate using p-values is also not great. p-values are
 
 ```{r summary-tbl}
 
-dat1 <- summary_tbl %>%
-  filter(!(label %in% c("Time to event, median (Q1;Q3)", "Deaths, N (%)"))) %>%
-  mutate(
-    pop = case_when(
-      pop == "ATE-weighted" ~ "ate",
-      pop == "Original" ~ "pop",
-      pop == "ATT-weighted" ~ "att",
-      pop == "Matched" ~ "matched"
-    )
-  ) %>%
-  pivot_wider(names_from = c(pop, treatment), values_from = stat) 
-
-dat1 %>%
+summary_tbl %>%
   gt(rowname_col = "label") %>%
   tab_spanner("Original", vars(pop_0, pop_1)) %>%
   tab_spanner("ATE-weighted", vars(ate_0, ate_1)) %>%
@@ -1019,43 +1079,53 @@ dat1 %>%
   # xaringan and gt css rules are clashing, so until this is fixed we need
   # to use tab_style to control font size. Furthermore, giving multiple
   # locations at once in a list does not work for some reason...
-  tab_style(cell_text(size = "80%"), cells_body()) %>% 
-  tab_style(cell_text(size = "80%"), cells_column_labels(everything())) %>% 
-  tab_style(cell_text(size = "80%"), cells_column_spanners(everything())) %>% 
-  tab_style(cell_text(size = "80%"), cells_stub()) 
-  
+  tab_style(cell_text(size = "60%"), cells_body()) %>% 
+  tab_style(cell_text(size = "60%"), cells_column_labels(everything())) %>% 
+  tab_style(cell_text(size = "60%"), cells_column_spanners(everything())) %>% 
+  tab_style(cell_text(size = "60%"), cells_stub()) 
+
 ```
 
 ???
 
-We can see that the balance in the matched and weighted populations have greatly improved, so the ps-model is at least improving the balance. 
-
-Also note that in the matched and ATT-matched population the untreated population has been changed to look like the treated, and for the ATE-weighted we have approximately twice as many patients.
+Not easy to absorb all the information in this table. Lets make a graphical visualization instead.
 
 ---
 
-## Data visualization
+## Graph 1
 
 ```{r summary-graph}
 
-dat1 <- analysis_dat %>%
+dat0 <- analysis_dat %>%
   select(-c("id", "time", "death", "ps", "match")) %>%
   mutate(
     treatment = factor(treatment, c(0, 1), c("Untreated", "Treated")),
     pop = factor(pop),
+    risk_score = factor(risk_score),
+    comorbidity_score = factor(
+      comorbidity_score, 
+      c("0", "1-2", "3+"), 
+      c("0", "1-2", "3+")
+    ),
     male = factor(male, c(0, 1), c("Female", "Male")),
-    pop_treat = factor(paste(pop, ": ", treatment)),
-    agegroup = factor(agegroup)
+    pop_treat = factor(paste0(pop, ": ", treatment))
   )
 
+dat1 <- dat0 %>%
+  group_by(pop_treat) %>%
+  summarize("n_pt" = sum(w), .groups = "keep") %>%
+  right_join(dat0, by= c("pop_treat")) %>%
+  mutate(
+    pop_treat = factor(paste0(pop_treat, " (n = ", formatC(n_pt, format = "f", digits = 0, big.mar = ","), ")"))
+  )
 
 # Ridgeline plot of risk score
 
 # Weighted ridgeline plots not implemented in ggridges, but if stat_density
 # is used instead of stat_density_ridges it is possible to make a weighted plot
 # although things like quartile lines is not possible.
-risk_score_plot <- dat1 %>%
-  ggplot(aes(x = risk_score, y = pop, fill = treatment)) +
+age_plot <- dat1 %>%
+  ggplot(aes(x = age, y = pop, fill = treatment)) +
   geom_density_ridges(
     aes(height = ..density.., weight = w), 
     alpha = 0.5,
@@ -1066,100 +1136,146 @@ risk_score_plot <- dat1 %>%
   scale_x_continuous(expand = c(0, 0.05), breaks = c(-2, 0, 2)) +
   scale_y_discrete(expand = c(0, 0)) +
   scale_fill_manual(values = cvd_colours) +
-  labs(x = NULL, y = NULL, fill = "Risk score") +
-    theme(legend.position = "bottom",
-          legend.justification = "center",
-          legend.title = element_text(size = 10),
-          axis.text.y = element_blank(),
-          axis.ticks.y = element_blank(),
-          axis.line.x = element_line(),
-          axis.text.x = element_text(size = 8, colour = "black"),
-          legend.text = element_text(size = 8)
+  labs(x = NULL, y = NULL, fill = NULL, title = "Age") +
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5, face = "plain"),
+    legend.position = "bottom",
+    legend.justification = "center",
+    legend.title = element_text(size = 10),
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    axis.line.x = element_line(),
+    axis.text.x = element_text(size = 8, colour = "black"),
+    legend.text = element_text(size = 8)
+  )
+
+# Percent stacked barchart of sex 
+sex_plot <- dat1 %>%
+  ggplot(aes(y = pop_treat, fill = male, weight = w)) +
+  geom_bar(position = "fill") +
+  geom_hline(yintercept = 2.5) +
+  geom_hline(yintercept = 4.5) +
+  geom_hline(yintercept = 6.5) +
+  scale_x_continuous(expand = c(0, 0.05), labels = scales::percent) +
+  scale_fill_manual(
+    values = c("#F7A8B8", "#55cdfc"),
+    guide = guide_legend(reverse = TRUE)
+  ) +
+  guides(fill = guide_legend(reverse = TRUE)) +
+  labs(x = NULL, fill = NULL, title = "Sex") + 
+  theme_bw() +
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5),
+    panel.grid = element_blank(),
+    panel.border = element_blank(),
+    axis.title = element_blank(),
+    axis.text.y = element_text(hjust = 0, size = 10, colour = "black"),
+    axis.ticks.y = element_blank(),
+    axis.line.y = element_blank(),
+    axis.text.x = element_text(size = 8, colour = "black"),
+    axis.line.x = element_line(),
+    legend.position = "bottom",
+    legend.justification = "center",
+    legend.text = element_text(size = 8),
+    legend.title = element_text(size = 10)
   )
 
 
+# Percent stacked barchart of comorbidity_score
+comorbidity_score_plot <- dat1 %>%
+  ggplot(aes(y = pop_treat, fill = comorbidity_score, weight = w)) +
+  geom_bar(position = position_fill(reverse = TRUE)) +
+  geom_hline(yintercept = 2.5) +
+  geom_hline(yintercept = 4.5) +
+  geom_hline(yintercept = 6.5) +
+  scale_x_continuous(expand = c(0, 0.05), labels = scales::percent) +
+  scale_fill_brewer(
+    # labels = c("+3", "1-2", "0"), 
+    palette = "Greens"
+    # direction = -1, 
+    # guide = guide_legend(reverse = TRUE)
+  ) +
+  labs(x = NULL, fill = NULL, title = "Comorbidity score") + 
+  theme_bw() +
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5),
+    panel.grid = element_blank(),
+    panel.border = element_blank(),
+    axis.title = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    axis.line.y = element_blank(),
+    axis.text.x = element_text(size = 8, colour = "black"),
+    axis.line.x = element_line(),
+    legend.position = "bottom",
+    legend.justification = "center",
+    legend.text = element_text(size = 8),
+    legend.title = element_text(size = 10),
+  )
 
-# Percent stacked barchart of sex 
+# Percent stacked barchart of risk_score
+risk_score_plot <- dat1 %>%
+  ggplot(aes(y = pop_treat, fill = risk_score, weight = w)) +
+  geom_bar(position = position_fill(reverse = TRUE)) +
+  geom_hline(yintercept = 2.5) +
+  geom_hline(yintercept = 4.5) +
+  geom_hline(yintercept = 6.5) +
+  scale_x_continuous(expand = c(0, 0.05), labels = scales::percent) +
+  labs(x = NULL, fill = NULL, title = "Risk score") + 
+  theme_bw() +
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5),
+    panel.grid = element_blank(),
+    panel.border = element_blank(),
+    axis.title = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    axis.line.y = element_blank(),
+    axis.text.x = element_text(size = 8, colour = "black"),
+    axis.line.x = element_line(),
+    legend.position = "bottom",
+    legend.justification = "center",
+    legend.text = element_text(size = 8),
+    legend.title = element_text(size = 10),
+  )
 
-sex_plot <- dat1 %>%
-  ggplot(aes(y = pop_treat, fill = male, weight = w)) +
-    geom_bar(position = "fill") +
-    geom_hline(yintercept = 2.5) +
-    geom_hline(yintercept = 4.5) +
-    geom_hline(yintercept = 6.5) +
-    scale_x_continuous(expand = c(0, 0.05), labels = scales::percent) +
-    guides(fill = guide_legend(reverse = TRUE)) +
-    labs(x = NULL, fill = NULL) + 
-    theme_bw() +
-    theme(panel.grid = element_blank(),
-          panel.border = element_blank(),
-          axis.title = element_blank(),
-          axis.text.y = element_text(hjust = 0, size = 10, colour = "black"),
-          axis.ticks.y = element_blank(),
-          axis.line.y = element_blank(),
-          axis.text.x = element_text(size = 8, colour = "black"),
-          axis.line.x = element_line(),
-          legend.position = "bottom",
-          legend.justification = "center",
-          legend.text = element_text(size = 8),
-          legend.title = element_text(size = 10)
-    )
-
-
-# Percent stacked barchart of age
-
-age_plot <- dat1 %>%
-  ggplot(aes(y = pop_treat, fill = agegroup, weight = w)) +
-    geom_bar(position = position_fill(reverse = TRUE)) +
-    geom_hline(yintercept = 2.5) +
-    geom_hline(yintercept = 4.5) +
-    geom_hline(yintercept = 6.5) +
-    scale_x_continuous(expand = c(0, 0.05), labels = scales::percent) +
-    labs(x = NULL, fill = "Agegroup") + 
-    theme_bw() +
-    theme(panel.grid = element_blank(),
-          panel.border = element_blank(),
-          axis.title = element_blank(),
-          axis.text.y = element_blank(),
-          axis.ticks.y = element_blank(),
-          axis.line.y = element_blank(),
-          axis.text.x = element_text(size = 8, colour = "black"),
-          axis.line.x = element_line(),
-          legend.position = "bottom",
-          legend.justification = "center",
-          legend.text = element_text(size = 8),
-          legend.title = element_text(size = 10),
-    )
-     
-(sex_plot + risk_score_plot + age_plot) & theme_trans
+(sex_plot | risk_score_plot | age_plot | comorbidity_score_plot) & theme_trans
 
 ```
 
 ???
 
-Descriptive tables are typically hard to digest, so we try to supplement the table with an experimental graphical visualization where we can also include a more detailed comparison of the distributions of the continuous variable.
+First and foremost, we can see that in the matched population we have the same number of treated and untreated patients, and that we have dropped a few treated patients from the original population. In the ATT-weighted population the number of untreated patients have been reweighted to be more similar to the number of treated patients, and in the ATE-weighted population both treatment groups have been reweighted to have approximately the size of the whole population. This is all as expected per our earlier observations on how PS matching and PS weighting works. 
 
-The marginal balance of the baseline characteristics looks very good, but again, we should do additional assessments. 
+We can see that there is a large imbalance in the sex distribution in the original population, but that there seems to be balance after matching and weighting. Note how the sex distribution shifts to reflect the distribution in the target distribution, eg the distribution among the treated for matching and ATT weighting, and the overall population for ATE weighting. 
+
+We can see that the distribution of the risk score is very similar in the original population, which reinforce our belief that it is not a true confounder but a risk factor. Because of this the distribution is mostly unchanged after matching and weighting, as expected.
+
+This graphical visualization also gives us the opportunity to plot the entire distribution of age. As with the sex covariate, we can see that the distribution is more balanced after matching and weighting.
+
+The same conclusions holds for the comorbidity score.
+
+Overall, the marginal balance of the confounders looks very good, but we should do additional assessments.
 
 ---
 
-## PS distribution
+## ps distribution
 
-- Quickly assess if something is very wrong with ps-model
+- Quickly assess if something is very wrong with PS model
 
-- Identical ps-distributions $\neq$ identical covariate distributions.
+- Identical $ps$ distributions $\neq$ identical covariate distributions.
 
 - Not a good way to assess covariate balance
 
 ???
 
-Another popular way to assess covariate balance is to compare the ps-distribution between treated and untreated patients after matching/weighting.
+Another popular way to assess covariate balance is to compare the $ps$ distribution of treated and untreated patients after matching/weighting.
 
-We can use this to quickly check that we haven't done something horribly wrong in our ps-matching/weighting, but other than that comparing the ps-distributions does not tell us much, unfortunately. Identical ps-distributions does not equal idential covariate distributions. We are not directly assessing covariate balance.
+We can use this to quickly check that we haven't done something horribly wrong in our matching/weighting, but identical $ps$ distributions does not equal identical covariate distributions, so as we are not directly assessing covariate balance, this plot does not tell us much.
 
 ---
 
-## PS distribution
+## ps distribution
 
 ```{r ps-dist}
 
@@ -1192,7 +1308,7 @@ dat1 %>%
       axis.title.y = element_blank(),
       axis.ticks.y = element_blank(),
       axis.text.y = element_blank(),
-      legend.position = c(0.9, 0.9),
+      legend.position = c(0.6, 0.9),
       panel.spacing = unit(1.5, "lines")
     ) +
     theme_trans +
@@ -1204,13 +1320,13 @@ dat1 %>%
 
 We see that matching and weighting has worked as intended. In the matched population the untreated population now has a ps-distribution that is nearly identical to the ps-distribution of the treated.
 
-We also see that that for both weighted populations, the ps-distributions have been approximately weighted to the target population.
+We also see that that for both weighted populations, the ps-distributions have been successfully reweighted to be very similar to the target population.
 
-Based on this would we then expect PS-matching has removed confounding entirely, but that there is residual confounding in the weighted populations? As we shall see this is not the case, which is why not too much should be put into the interpretation of these plots.
+Based on this we should not conclude that PS matching has removed confounding entirely, but that there is residual confounding in the weighted populations. As we shall see this is not the case, and this is why we should not draw conclusions from these type of plots.
 
 ---
 
-## Standardized Differences 
+## Standardized differences 
 
 $$SD = \frac{|\bar{x}_t - \bar{x}_c|}{\sqrt{\frac{s^2_t + s^2_c}{2}}}$$
 
@@ -1220,27 +1336,27 @@ $$\bar{x} = \frac{1}{\sum_i w_i} \sum_i w_i x_i$$
 
 $$s^2 = \frac{\sum_i w_i}{(\sum_i w_i)^2 - \sum_i w_i^2}\sum_i w_i (x_i -  \bar{x})^2$$
 
-- Not influenced by sample size.
+- Not influenced by sample size
 
-- Can be used for both continuous and dichotomous variables.
+- Can be used for both continuous and dichotomous variables
 
 - Categorical variables?
 
-- Only compares means of distributions!
+- Could also include SD for higher-order moments of continuous variables
 
 ???
 
 We have talked about what we should not do. Now lets talk about what we *should* do.
 
-A less subjective way to assess covariate balance is by calculating the  standardized difference for each covariate.
+A less subjective way to assess covariate balance is by calculating the  standardized difference (SD) for each covariate.
 
-Definition of SD can vary slightly, here we take the absolute value of the numerator, and we don't multiply by 100. SD < 0.1 is generally considered to indicate that there is sufficient covariate balance.
+The definition of SD can vary slightly, here we take the absolute value of the numerator, and we don't multiply by 100. SD < 0.1 is generally considered to indicate that there is sufficient covariate balance.
 
 For unweighted populations the formulas reduces to the standard formulas.
 
-One approach to handle categorical variables is by replacing them with a set of dichotomous variables.
+The SD is appropriate to calculate for both continuous and dichotomous variables. One approach to handle categorical variables is by replacing them with a set of dichotomous variables and then calculate the SD for each of those.
 
-Only compares means of distributions, so for continuous variables we should do additional assessments.
+You could also calculate the SD for higher-order moments of a continuous variable, eg the square of the variable for assessing balance of variance. We will omit this in our example, but it is one way to do a more proper assessment of balance of continuous variables, where it is insufficient with balance in the mean of the distribution.
 
 ---
 
@@ -1261,8 +1377,8 @@ dat1 <- standardized_differences %>%
     ),
     var = factor(
       var,
-      c("male", "risk_score", "agegroup: 0-18", "agegroup: 19-64", "agegroup: 65+"),
-     c("Male", "Risk score", "Agegroup: 0-18", "Agegroup: 19-64", "Agegroup: 65+")
+      c("male", "risk_score", "age", "comorbidity_score: 0", "comorbidity_score: 1-2", "comorbidity_score: 3+"),
+     c("Male", "Risk score", "Age", "Comorbidity score: 0", "Comorbidity score: 1-2", "Comorbidity score: 3+")
     )
   )
 
@@ -1294,9 +1410,45 @@ We can se that the SD is very small after matching or weighting in both the over
 
 ---
 
+## Weight statistics
+
+- If PS weighting is used, look at weights
+
+- Large weights only problematic if large relative to the population size:
+
+ - Max weight = 10, N = 1 million: Irrelevant
+ - Max weight = 10, N = 100: Not good!
+
+???
+
+If we are using PS weighting we should look at the weights. This is not a direct assessment of covariate balance but large weights indicate problems with the positivity assumption and is a sign that the balance could be improved.
+
+Large weights are only problematic is they are large relative to the population size. If we have a weight of 10 in a population of 1 million we do not care, but a weight of 10 in a population of 100 would probably be very problematic.
+
+---
+
+## Weight distribution
+
+```{r weight-stats}
+
+weight_stats %>% 
+  filter(pop %in% c("ATE-weighted", "ATT-weighted")) %>%
+  mutate(
+    treatment = factor(treatment, c(0, 1), c("Untreated", "Treated"))
+  ) %>%
+  gt()
+  
+```
+
+???
+
+We see that relative to population sizes, the maximum weights are not that large and there are not that many "large" weights based on the percentiles, so there is no cause for concern here.
+
+---
+
 ## Empirical CDF
 
-- Continuous variable: balance in mean is not enough. 
+- Continuous confounder: balance in mean is not enough.
 
 - Empirical CDFs are a straight forward way to compare the entire distribution of continuous variables.
 
@@ -1306,7 +1458,7 @@ where $w_i$ is the weight and $I$ the indicator function.
 
 ???
 
-For continuous variable it is not enough to compare means of distributions using SD's. We need to balance all moments of the distribution, eg the variance. One way to compare the entire distribution of continuous variables is by using the empirical CDF. 
+For a continuous variable it is not enough to compare means of distributions using SD's. We need to balance all moments of the distribution, eg the variance. One way to compare the entire distribution of continuous variables is by comparing the empirical CDF.
 
 ---
 
@@ -1322,21 +1474,21 @@ empirical_cdf %>%
       c("Original", "Matched", "ATT-weighted", "ATE-weighted") 
     ),
     treatment = factor(treatment, c(0, 1), c("Untreated", "Treated")),
-    strata_agegroup = factor(
-      strata_agegroup,
-      c("Overall", "Agegroup: 0-18", "Agegroup: 19-64", "Agegroup: 65+"),
-      c("Overall", "Agegroup: 0-18", "Agegroup: 19-64", "Agegroup: 65+")
+    strata_male = factor(
+      strata_male,
+      c("Overall", "Female", "Male"),
+      c("Overall", "Female", "Male")
     )
   ) %>%
   ggplot(aes(x, cdf, group = treatment, colour = treatment)) +
   geom_step() +
   labs(
-    x = "Risk score",
+    x = "Age",
     y = "CDF",
     group = NULL,
     colour = NULL
   ) +
-  facet_grid(vars(pop), vars(strata_agegroup)) +
+  facet_grid(vars(pop), vars(strata_male)) +
   theme_bw() +
   scale_colour_manual(values = cvd_colours) +
   theme(panel.grid = element_blank()) +
@@ -1346,21 +1498,9 @@ empirical_cdf %>%
 
 ???
 
-Everything look balanced, also in strata of age-group. 
+Everything look balanced, also in strata of sex. 
 
-Based on these assessments we are satisfied with the covariate balance we have attained. If we we not, we would go back and eg fine-tune the ps-model then redo the balance assessment until we were.
-
----
-
-## Separation of design and analysis of study 
-
-- Assessment of covariate balance is not influenced by knowledge of estimated treatment effect
-
-- Mimics RCT
-
-???
-
-Before we move on to actually estimate the treatment effect, note that we have done a lot of preliminary work ensuring we have the required covariate balance, but that this process has not been influenced by us knowing the estimate of the treatment effect under the current covariate balance. We have effectively blinded ourselves to the results, so that they do not affect our assessment of covariate balance. This separation of design of design and analysis of the study is a desirable property that mimics how the design and analysis of an RCT is separated.
+Based on these assessments we are satisfied with the covariate balance we have attained. If we were not, we would go back and eg fine-tune the PS model and then redo the balance assessments until we were.
 
 ---
 
@@ -1370,19 +1510,19 @@ Before we move on to actually estimate the treatment effect, note that we have d
 
 - After matching/weighting, observations are no longer independent
 
-- CI's will be too narrow if dependence not taken into account.
+- Usual formulas will result in incorrect CI coverage probabilities
 
 - Often overlooked complication
 
 ???
 
-We are not only interested in an estimate of the treatment effect, but also in some measure of precision of the estimate, usually a 95% confidence interval based on a variance estimate. Standard variance estimates assumes independent observations, but in our weighted/matched population, our observations are not! In weighted populations we include multiple copies of the same patients, and in matched populations, the observations are "more alike" than in the "general population".
+We are not only interested in an estimate of the treatment effect, but also in some measure of precision of the estimate, usually a 95% confidence interval. Standard variance estimates assumes independent observations, but in our weighted/matched population, this is not the case! In weighted populations we include multiple copies of the same patients, and in matched populations the observations are "more alike" than in the "general population", vaguely speaking.
 
-If we do not take this lack of independence into account, our estimated CI's are going to be too narrow! 
+If we do not take this lack of independence into account, our estimated CI's are not going to have the correct coverage probabilities.
 
-This complication is often overlooked/ignored. In some cases, proper/improper CI estimates will be basically indistinguishable from each other, but sometimes, especially when using PS weighting, the usual CI's will be noticeably narrower. So it is not something that should be ignored because "it does not matter in practice".
+This complication is often overlooked/ignored. In some cases, proper/improper CI estimates will be indistinguishable from each other, but sometimes, especially when using PS weighting, there will be noticeable differences. So it is not something that should be ignored because "it does not matter in practice".
 
-There is also some controversy about whether or not observations are independent when doing PS matching without replacement. Several simulation studies overwhelmingly suggest that you should though, so whatever the arguments are not to do it, they don't seem to hold up. 
+There is some controversy about whether or not observations are independent when doing PS matching without replacement, but several simulation studies show that it is not the case, and that this lack of independence results in improper CI coverage if it is not taken into account.
 
 Without going into much detail, We will here suggest two standard approaches to handle variance/CI estimation. How to implement this in SAS is shown in the accompanying SAS example.
 
@@ -1396,19 +1536,17 @@ Pros:
 
 - Easy to specify when fitting GLM's / Cox models in SAS (and R?)
 
-- For small/medium populations: not time-consuming to estimate.
-
 Cons:
 
 - Only applicable when sample statistic of interest is a regression parameter
 
-- For large populations: can be very time-consuming
+- Very time-consuming for large populations
 
-- Assumes true PS's used. Still results in too narrow CI's.
+- Assumes true PS's used. Still results in improper CI coverage probability.
 
 ???
 
-The so-called robust sandwich estimator is an adjustment of the variance estimates from a regression model. It is easy to specify that this adjustment should be made when fitting GLM's and Cox models, at least in SAS. For small to medium sized populations, it takes approximately the same time to estimate the variance. On the other side, the method is only applicable when the sample statistic of interest is a regression parameter. Also, it can be very time-consuming for large populations, and the approach assumes that the true PS have been used, so the uncertainty in the ps estimate is not incorporated into the variance estimate, ie the estimated CI's will still be too narrow.
+The so-called robust sandwich estimator is an adjustment of the variance estimates from a regression model. It is easy to specify that this adjustment should be made when fitting GLM's and Cox models, at least in SAS. On the other hand, the method is only applicable when the sample statistic of interest is a regression parameter. Also, it can be very time-consuming to estimate the sandwich estimator for large populations, and the approach assumes that the true PS have been used, so the estimated CI's will still have improper coverage probabilities.
 
 The sandwich estimator is the usual go-to solution when the sample statistic of interest is a regression parameter. It is an easy and usually fast approach. And while it is technically not a perfect solution to our problem because we don't use the true ps's, the estimated CI's have approximately the correct coverage.
 
@@ -1434,7 +1572,7 @@ Cons:
 
 ???
 
-A more general approach is to use bootstrapping to estimate the distribution of the sample statistic of interest by resampling the population with replacement many times, and calculating the estimate of the sample statistic in each sample. The resample estimates will give an estimate of the entire distribution of the sample statistic, and we can use that to construct a CI using eg the percentiles of the distribution.
+A more general approach is to use non-parametric bootstrapping to estimate the distribution of the sample statistic of interest by resampling the population with replacement many times, and calculating the estimate of the sample statistic in each sample. The resample estimates will give an estimate of the entire distribution of the sample statistic, and we can use that to construct a CI using eg the percentiles of the distribution.
 
 This approach can be used to estimate CI's for whatever sample statistic we are interested in, which is a big advantage when the analytic form of the distribution of the sample statistic is unknown or very complicated.
 
@@ -1460,7 +1598,9 @@ Bootstrap approach:
 
 2. Calculate $\bar{x_m}$ for $m=1,\dots,M$.
 
-3. Use percentiles of $\bar{x}_m, m=1,\dots,M$ to estimate $CI_{95\%}(\mu)$
+3. Use percentiles of $\bar{x}_m, m=1,\dots,M$ to estimate $CI_{95\%}(\mu)$:
+
+$$CI_{95\%}(\mu) \approx [\bar{x}_{p_{2.5}}, \bar{x}_{p_{97.5}}]$$
 
 ???
 
@@ -1477,6 +1617,7 @@ Using the bootstrap approach we would instead make $M$ resamples of our original
 ## Bootstrap example - sample mean
 
 ```{r bootstrap-setup}
+
 n <- 1e3
 m <- 1e2
 set.seed(1)
@@ -1505,14 +1646,16 @@ bootstrap_est_ci <- c(
   quantile(mean_est$mean[-1], c(0.025, 0.975), names = FALSE)
 )
 
-
 ```
 
 Let $\mu = 0$, $\sigma = 1$, $n =$ `r n` and $M =$ `r m`:
 
-<span style="color: green;">analytic:</span> $CI_{95\%}(\mu)=[\bar{x}-1.96\frac{S}{\sqrt{n}}; \bar{x}+1.96\frac{S}{\sqrt{n}}] =$ `r glue("[",round(analytic_est_ci[2], 3),";",round(analytic_est_ci[3], 3),"]")`
+<span style="color: green;">analytic: $CI_{95\%}(\mu)=[\bar{x}-1.96\frac{S}{\sqrt{n}}; \bar{x}+1.96\frac{S}{\sqrt{n}}] =$ `r glue("[",round(analytic_est_ci[2], 3),";",round(analytic_est_ci[3], 3),"]")`
+</span>
 
-<span style="color: red;">bootstrap:</span> $CI_{95\%}(\mu)=$ `r glue("[",round(bootstrap_est_ci[2], 3),";",round(bootstrap_est_ci[3], 3),"]")`
+<span style="color: red;">bootstrap:
+$CI_{95\%}(\mu)=$ `r glue("[",round(bootstrap_est_ci[2], 3),";",round(bootstrap_est_ci[3], 3),"]")`
+</span> 
 
 ```{r bootstrap-graph, fig.width = 9, fig.height = 3}
 mean_est %>%
@@ -1528,12 +1671,12 @@ mean_est %>%
   scale_x_continuous(expand = c(0, 0)) +
   scale_y_continuous(expand = c(0, 0)) +
   theme_trans +
-  labs(x = expression(bar(x))) 
+  labs(x = expression(bar(x)[m])) 
 ```
 
 ???
 
-Let say that $\mu = 0$, $\sigma = 1$, $n =$ `r n` and $M =$ `r m`. Simulating a sample from the standard normal distribution and following the above steps we can see that our estimate of the sample mean distribution is very rough, but we still get essentially identical estimates from the bootstrap and analytic approach. 
+Let say that $\mu = 0$, $\sigma = 1$, $n =$ `r n` and $M =$ `r m`. Following the steps from the previous slide we can see that our estimate of the sample mean distribution is very rough, but despite this we still get essentially identical CI estimates from the bootstrap and analytic approach. So the bootstrap approach seems to work, at least in this example.
 
 ---
 
@@ -1568,7 +1711,7 @@ assess_ph %>%
 
 ???
 
-Before fitting any Cox regression models we should first assess if the PH assumption is fulfilled. This can be done in many ways, but a common simple approach is to plot log(-(log(survival) vs log(time) for treated and untreated patients separately, and check that the transformed survival curves are approximately parallel. In this case, we conclude that we do not see evidence of a violation of the PH assumption. The non-proportional part of the graph is restricted to the first "few" days of follow-up where few outcomes have had a chance to happen, as is also often seen in real studies. In this specific case, we actually **know** that the PH assumption is fulfilled, since the data was simulated so that was the case.
+Before fitting any Cox regression models we should first assess if the PH assumption is fulfilled. This can be done in many ways, but a common simple approach is to plot log(-(log(survival) vs log(time) for treated and untreated patients separately, and check that the transformed survival curves are approximately parallel. In this case, we conclude that we do not see evidence of a violation of the PH assumption. The non-proportional part of the graph is restricted to the first "few" days of follow-up where few outcomes have had a chance to happen, as is also often seen in real studies. In this specific case, we actually **know** that the PH assumption is fulfilled, since the data was simulated so that this was the case.
 
 Note that this type of PH assessment is also commonly done for conditional Cox models. In a conditional model the PH assumption needs to be fulfilled in **all** strata of confounders, not just the marginal treatment strata. Despite of this, it is common to just check the marginal treatment strata, since checking all strata is usually infeasible in practice. So in the case of a conditional model, this type of assessment is less than ideal most of the time, whereas for a marginal model it is more justifiable.
 
@@ -1580,7 +1723,7 @@ Note that this type of PH assessment is also commonly done for conditional Cox m
 
 relative_effect_estimates %>%
   filter(effect == "Marginal" & !pop == "Original") %>%
-  select(-effect) %>%
+  select(c("pop", "var_est",  "hr_ci")) %>%
   pivot_wider(names_from = var_est, values_from = hr_ci) %>%
   gt() %>%
   cols_label(pop = "Population", bootstrap = "Bootstrap CI", sandwich = "Sandwich CI") %>%
@@ -1589,25 +1732,31 @@ relative_effect_estimates %>%
 cond_effect <- relative_effect_estimates %>%
   filter(effect == "Conditional" & pop == "Original") %>%
   select(hr_ci) %>% pull()
+
+ate_effect <- relative_effect_estimates %>%
+  filter(effect == "Marginal" & pop == "ATE-weighted" & var_est == "bootstrap") %>%
+  select(HazardRatio) %>% pull()
+
+att_effect <- relative_effect_estimates %>%
+  filter(effect == "Marginal" & pop == "ATT-weighted" & var_est == "bootstrap") %>%
+  select(HazardRatio) %>% pull()
 ```
 
 <br><br>Conditional treatment effect estimate: `r cond_effect`
 
 ???
 
-Finally we are at the point where we actually estimate the treatment effect! We start by estimating the relative ATE/ATT as defined earlier, ie as a marginal hazard ratio of death for treatment versus no treatment. As discussed earlier, we will do this by fitting a Cox model where only the treatment indicator is included as a covariate. Furthermore, if we are doing PS weighting, we provide the statistical software with the patient weights as well. 
+Finally we are at the point where we actually estimate the treatment effect! We start by estimating the relative ATE/ATT as defined earlier, ie as a marginal hazard ratio of all-cause-mortality for treatment versus no treatment. As discussed earlier, we will do this by fitting a Cox model where only the treatment indicator is included as a covariate in the matched/weighted population. Furthermore, if we are doing PS weighting, we provide the statistical software with the patient weights as well.
 
-In this hypothetical study, we see that the relative ATE and ATT (ATT weighting and matching) estimates are almost identical. Actually, the true ATE and ATT *is* identical in the simulated data, since the data is not very complex. The true relative ATE/ATT is `r induced_relative_effects %>% filter(check == "Induced relative ATE") %>% select(HazardRatio) %>% pull()`, so it would seem like all the methods are performing equally well, and that the methods are capable of giving very good estimates of the true underlying effect, at least in this specific example. Furthermore, we can see that both the robust sandwich estimator and the bootstrap approach resulted in very similar CI's.
+In this hypothetical study, we see that the relative ATE and ATT (ATT weighting and matching) estimates are almost identical. Actually, the true ATE and ATT *are* identical in the simulated data, and the estimates are very close to the true effect, so it would seem like all the methods are performing equally well, at least in this specific example. Furthermore, we can see that both the robust sandwich estimator and the bootstrap approach resulted in very similar CI's, and all CI's include the true effect.
 
-To iterate what was discussed earlier: the ATE and ATT does **not** generally coincide in real observational studies! It is purely due to the lack of sophistication in the simulated data that it is the case in this example.
+To iterate what was discussed earlier: the ATE and ATT does **not** generally coincide in real observational studies! It is purely due to a lack of sophistication in the simulated data that it is the case in this specific example.
 
-Finally, it is also worth noting that had we estimated the conditional treatment effect, ie fitted a Cox regression on the original population including not only the treatment indicator, but also all the confounders as covariates in the model, we would get a conditional treatment effect estimate of `r cond_effect`. These estimates are clearly differentm and this is because the conditional and marginal treatment effect does not coincide when the effect estimator is non-collapsible as mentioned earlier. The true underlying conditional effect is `r induced_relative_effects %>% filter(check == "Induced relative conditional effects" & parameter == "treatment") %>% select(HazardRatio) %>% pull()`, so again the estimate is very precisely estimating the true effect, but it is a different type of treatment effect!
-
-The conditional and marginal effect is not that different in this example, but the interpretation of the result is not the same. Our PS analysis show that the rate of deaths is approximately 50% lower if we treat all (treated) patients versus treated none of the (treated) patients. The conditional analysis show that the rate of death is 45% lower for a patient if they get the treatment compared to not getting the treatment. Again, because the hazard ratio is not a collapsible effect estimator, the treatment effect on the individual and population level does not coincide generally, which this example also show.
+Finally, it is also worth noting that had we estimated the conditional treatment effect, ie fitted a Cox regression on the original population including not only the treatment indicator, but also all the confounders as covariates in the model, we would get a conditional treatment effect estimate of `r cond_effect`. These estimates are clearly different and this is because the conditional and marginal treatment effect does not coincide when the effect estimator is non-collapsible as mentioned earlier. As with the marginal effect estimates, the conditional effect estimate is very close to the true effect, and the true effect is included in the CI.
 
 ---
 
-## Cumulative incidence curves
+## Marginal cumulative incidence curves
 
 ```{r cum-inc-curves}
 dat1 <- cumulative_incidences %>%
@@ -1639,9 +1788,9 @@ dat1 %>%
 
 ???
 
-Next, we want to estimate the absolute ATE/ATT. As defined earlier, the absolute ATE is the cumulative incidence risk difference at some time point. Here, we decide that the one-year risk difference is what we are interested in. We estimate this risk difference by estimating the cumulative incidence one year after diagnosis for both treated and untreated patients and subtracting the estimates. In this case we decide it is too much of a hassle to figure out an analytic formula for the CI, so we decide to use the bootstrapping approach. Again, we do this by resampling the population and estimating the risk difference in each resample, then use percentiles of the risk difference estimates to form a CI.
+Next, we want to estimate the absolute ATE/ATT. As defined earlier, the absolute ATE is the risk difference at some time point, in this case the 1-year risk difference. We estimate the risk difference by estimating the marginal cumulative incidence one year after diagnosis for both treated and untreated patients and subtracting the estimates. In this case we decide it is too much of a hassle to figure out an analytic formula for the CI, so we decide to only use the bootstrapping approach. Again, we do this by resampling the population and estimating the risk difference in each resample, then use percentiles of the risk difference estimates to form a CI.
 
-In this graph the cumulative incidence curves for treated and untreated patients are plotted in each population. We see that the curves don't change much in the weighted and matched populations in this example. These adjusted cumulative incidence curves are also valuable on their own, as they provide unconfounded estimates of the baseline risk of one-year mortality for treated and untreated patients.
+In this graph the marginal cumulative incidence curves for treated and untreated patients are plotted in each population. These are also valuable on their own, as they provide estimates of the risk of all-cause mortality had everyone been treated or not treated.
 
 ---
 
@@ -1669,87 +1818,87 @@ absolute_effect_estimates %>%
 
 ???
 
-For the absolute ATE/ATT, we do see a difference in the ATE and ATT estimates, because in this case the true ATE and ATT does not coincide. The ATE estimate is clearly lower than the ATT estimates. The true ATE effect is `r induced_absolute_effects %>% filter(effect == "ate" & time == 365) %>% select(risk_diff) %>% pull()`, and the true ATT is `r induced_absolute_effects %>% filter(effect == "att" & time == 365) %>% select(risk_diff) %>% pull()`, so again we see that in this example we get very precise estimates of the different effects, and that ATT weighting and matching seems to perform equally well.
-
-The interpretation of the ATE estimate is, that treating the whole population versus not treating anyone, would result in an average 1-year all-cause mortality risk reduction of 16%. Since the risk difference is a collapsible effect estimator, the ATE can also be interpreted as a person getting the diagnosis having, on average, a 16% lower risk of dying within a year after diagnosis if they get the treatment versus not getting the treatment. 
-
-The ATT can be interpreted as an average 1-year all-cause mortality risk reduction of 16% among patients who got the treatment. 
-
-The difference in ATE and ATT is not significant to our conclusions in this example, but imagine we had a treatment with one or more contra-indications, eg all patients with certain characteristics would be very unlikely to get the treatment because it is likely to have an adverse effect on this particular subpopulation. As a (maybe reasonable) example, lets imagine that the diagnosis defining our population is cancer, and that the treatment is high-dose chemotherapy. We would not give this treatment (I think) to very old and very fragile persons, since high-dose chemotherapy would outright kill them. If we imagine that our population is predominantly old and fragile, we could imagine that we would get an ATT estimate that would indicate that the treatment was helpful, and a ATE estimate that indicated no effect, or even a negative effect.
-
-In practice, such extreme examples would be very easy to detect, since it would be hard/impossible to find candidates for counterfactual outcomes for the almost never/always treated patients. The positivity assumption would be clearly violated, resulting in extreme weights, a matched population where many treated patients have been excluded, and/or difficulty achieving covariate balance.
+Again the estimates are very close to the true absolute effects, and this time we see a clear difference in the ATE and ATT estimates, because in this case the true ATE and ATT does not coincide.
 
 ---
 
-## PS-matching pros and cons 
+## PS matching pros and cons 
 
 Pros:
 
 - Easy to analyze
 
-- People are familiar with analyses of matched populations
+- People are familiar with matching
 
 Cons:
 
-- Non-trivial how to make the matched population
+- Non-trivial to make matched population
 
-- Very time-consuming relative to making a ps-weighted population
+- Very time-consuming relative to PS weighting
 
 - Less clear how to estimate ATE
 
 - Need 5:1 ratio of untreated to treated patients?
 
+- Discards non-matched untreated patients
+
 ???
 
 We have now concluded our analyses, and we can reflect on the strengths and weaknesses of propensity score matching and weighting.
 
-A big advantage of PS-matching is that after the matched population has been created, it is easy to analyze since we don't need to adjust for confounding and we don't have any ps-weights we need to be able to handle in our statistical analysis.
+A big advantage of PS-matching is, that after the matched population has been created it is easy to analyze, since we don't need to adjust for confounding and we don't have any ps-weights we need to be able to handle in our statistical analysis.
 
-Another advantage is that people are typically more fsamiliar and comfortable with matched than weighted populations, so it is easier to communicate the results of the analysis to readers and convicne them of the validity of the analysis.
+Another advantage is that people are typically familiar and comfortable with matched analyses, so it is easy to communicate the results of the analysis to readers and convince them of the validity of the analysis.
 
-On the other hand, it is not trivial at all to make the matched population. There are many different matching designs that can be used, and in this presentation we have only touched on one specific way to do it that is reasonable. Furthermore, implementations of ps-matching seems to be rare in statistical software, so implementations of ps-matching is often done manually. This often lead to very inefficient implementations that can make the matching process infeasible in practice. In any case, ps-matching is very time-consuming relative to ps-weighting.
+On the other hand, it is not trivial at all to make the matched population. There are many different matching designs that can be used, and in this presentation we have only touched on one reasonable way to do it. Furthermore, implementations of PS matching seems to be rare in statistical software, so the matching process is often done manually. This often lead to very inefficient implementations that can make the matching process infeasible in practice. In any case, PS matching is very time-consuming relative to PS weighting.
 
 Usually 1:1 matching of untreated to treated patients is done, and this leads to an ATT estimate. But matching can be done in different ways which leads to different casual contrasts. You could match treated to untreated patients to estimate the average effect in the untreated (ATU). You could also estimate the ATE by eg finding matches for all patients, matching untreated to treated patients and treated patients to untreated patients. But other matching techniques also exists that leads to the ATE being estimated.
 
-The conventional wisdom is that the ratio of untreated to treated patients need to be high, eg 5:1. While this is indeed necessary if matching is done without replacement to avoid depleting the pool of potential controls, it is not necessarily of any importance when matching is done with replacement. As we have seen in the example, there is nothing inherently wrong with matching with replacement. It works just fine, and makes it possible to do ps-matching even when the ratio of untreated to treated patients is low. The reason why many people prefer matching without replacement is probably because this is what has been done historically for the most part.
+The conventional wisdom is that the ratio of untreated to treated patients need to be high, eg 5:1. While this is indeed necessary if matching is done without replacement to avoid depleting the pool of untreated patients we can match from, it is not necessarily of any importance when matching is done with replacement. As we have seen in the example where there are 50% treated patients, there is nothing inherently wrong with matching with replacement. It works just fine, and makes it possible to do ps-matching even when the ratio of untreated to treated patients is low. The reason why many people prefer matching without replacement is probably because this is what has been done historically.
+
+Finally, when doing PS matching we are discarding all non-matched untreated patients from our analysis. This can lead to a loss of precision in our estimates. We did not see this in our example, since we matched we had 50% treated patients and matched with replacement, so our matched population was approximately the same size.  
 
 ---
 
-## PS-weighting pros and cons
+## PS weighting pros and cons
 
 Pros:
 
 - Straightforward to calculate weights to estimate eg ATT and ATE
 
-- Efficient compared to making a matched population
+- Efficient compared to making matched population
 
 Cons:
 
 - Software / methodology might not support weights!
 
+- Dealing with extreme weights
+
 ???
 
-Compared to ps-matching it is very simple to calculate weights that leads to estimates of different causal contrasts, in particular the ATT and ATE.
+Compared to PS matching it is very simple to calculate weights that leads to estimates of different causal contrasts of interest, eg the ATT and ATE.
 
-It is also way more efficient to calculate ps-weights than creating a matched population.
+It is also way more efficient to calculate weights than creating a matched population.
 
-On the other hand, there are no guaranties that the used statistical software implementation / methodology support weights. So if ps-weights are to be used, it is critical to investigate whether the needed statistical analyses can be performed before committing to ps-weighting!
+On the other hand, there are no guaranties that the used statistical software implementation of a statistical method or the methodology itself support weighted populations. So if PS weighting is to be used, it is critical to investigate whether the needed statistical analyses can be performed before committing to this method!
+
+It is also not unlikely to have extreme weights that need to be handled one way or other. Other weighting approaches exists that are less prone to produce extreme weights, but in practice it is not always easy to solve this problem.
 
 ---
 
 ## Positivity assumption problems
 
-Signs of problem:
+Signs of violation:
 
 - Exclusion of treated patients in matched population 
 
-- Extremely large weights in weighted population
+- Extreme weights in weighted population
 
 - Lack of covariate balance
 
 Possible solutions:
 
-- Refine ps model
+- Refine PS model
 
 - Restrict study population
 
@@ -1763,19 +1912,21 @@ What not to do:
 
 ???
 
+We will end the presentation with some in-depth comments on the positivity assumption, since it is not always clear how this should be handled.
+
 The positivity assumption states that each patient must have a non-zero probability of each treatment, ie for each patient we need to be able to find a similar patient who got the opposite treatment, so that we can use those patients to estimate what would have happened had the patient got the other treatment. It is not uncommon to have some degree of problem with this assumption.
 
-If this assumption is violated it can manifest itself in different ways. If we do matching, we might not be able to find matches for all treated patients. With ps-weighting we might have extremely large weights, because a patient's estimated ps is close to zero or one. In combination with one of the above we might also notice that we can't achieve covariate balance.
+If this assumption is violated it can manifest itself in different ways. If we do PS matching, we might not be able to find matches for all treated patients. With PS weighting we might have extremely large weights, because a patient's estimated PS is close to zero or one. In combination with one of the above, we might also notice that we can't achieve covariate balance.
 
-So how do we solve this problem? Sometimes the problem is with the ps-model. Maybe the ps-model is trying to adjust for way too much. In our example, lets imagine that beside risk score, agegroup and sex, we had also added a number of comorbidity covariates, because, why not, they might be potential confounders. In that case we might conclude that a more parsimonious model based strictly on our DAG is more appropriate, and that might be enough to fix the problem.
+So how do we solve this problem? Sometimes the problem is with the PS model. In a traditional outcome regression analysis, the conventional rule of thumb is that you need 10 outcomes for each confounder you want to adjust for. In a PS analysis we are fitting a PS model where the outcome is exposure, so the more confounders we want to include in the PS model, the more exposed patients we need. This can quickly become a problem when we have very few treated patients, and we want to include a large amount of confounders in our model. Before fitting any PS models, we should investigate how many treated patients we have, so we can assess if it is reasonable to fit the model we want to. Maybe we simply don't have enough data to support and ideal model, and a more parsimonious model has to be used.
 
-In other cases we can't justifiably modify the ps-model, and the underlying problem is actually that some types of patients are (almost) always/never treated. In this case we should try to identify exactly what characteristics causes one to be always/never treated, and explicitly exclude such patients from our study population. We are not capable to infer anything meaningful for such patients, so we should explicitly exclude them so it is clear on what population we are making inference. 
+In other cases the underlying problem is that some types of patients are (almost) always/never treated. In this case we should try to identify exactly what characteristics causes one to be always/never treated, and explicitly exclude such patients from our study population. We are not capable to infer anything meaningful for such patients, so we should explicitly exclude them, so that it is clear on what population we are making inference. 
 
-If it is not possible to identify the problem, and/or you are unwilling to restrict the study population, then you are in the difficult position that your study question might be unanswerable with the data at hand, at least using PS methods. At this point the proper response is probably to try and figure out an alternative way to analyze the data.
+If it is not possible to identify the problem, and/or you are unwilling to restrict the PS model / study population, then you are in the difficult position that your study question might be unanswerable with the data at hand, at least using PS methods. At this point the proper response is probably to try and figure out an alternative way to analyze the data.
 
-So what should you not do? First of all you should not simply ignore the problem. It is not uncommon to see studies where ps-matching is used, and a (large) proportion of treated patients has been removed from the matched population. It is then often argued that we are not interested in patients for whom we can't find matches anyway, so it is fine to just exclude them without any further thoughts, but this is problematic! If we do this, we are no longer estimating the ATT, but the ATT in a subgroup of patients based on a restriction on ps-values. No meaningfull inference can come from such an approach. The correct interpretation of the estimated causal contrast would be something like "among treated patients with x < ps < y the average treatment effect is X". What does that even mean?
+So what should you not do? First of all you should not simply ignore the problem. It is not uncommon to see studies where PS matching is used, and a (large) proportion of treated patients has been removed from the matched population. It is then often argued that we are not interested in patients for whom we can't find matches anyway, so it is fine to just exclude them without any further thoughts, but this is problematic! If we do this, we are no longer estimating the ATT, but the ATT in a subgroup of patients based on a restriction on $ps$ values. No meaningful inference can come from such this approach. The correct interpretation of the estimated causal contrast would be something like "Among patients with diagnosis X, treated patients that did not have a too large or too small estimated probability of being treated had, on average, a 20% lower 1-year risk of Y than untreated patients". What does that even mean? It would be way better to figure out that, eg very old patients are causing the problems with the model, restrict the study population and then come to the conclusion that "Among patients younger than 120 with diagnosis X, treated patients had, on average, a 20% lower 1-year risk of Y than untreated patients".
 
-It is also common to see ps trimming and/or truncating being used with ps-weighting. Trimming entails removing patients with weights larger than some limit. This leads to the same problem as described in the previous paragraph. Another thing that is sometimes done is ps truncation, where extremely weight are truncated to some upper limit. First of all, if we can obtain covariate balance without fiddling with the weights, it is likely irrelevant how "extreme" the weights are. Truncating the weights in this scenario might just result in worse covariate balance, without actually fixing a real problem. If we do have covariate imbalance, and weight truncation improves the situation, then maybe this solution is helpful. But as argued above, there is probably an underlying problem that should be fixed explicitly instead.
+It is also common to see $ps$ trimming and/or truncating being used with $PS$ weighting. Trimming entails removing patients with weights larger than some limit. This leads to the same problem as described in the previous paragraph. Another thing that is sometimes done is $ps$ truncation, where extreme weights are truncated to some upper limit. If we can obtain covariate balance without fiddling with the weights, it is likely irrelevant how "extreme" the weights are. Truncating the weights in this scenario might just result in worse covariate balance, without actually fixing a real problem. If we do have covariate imbalance, and weight truncation improves the situation, then maybe this solution is helpful. But as argued above, there is probably an underlying problem that should be fixed explicitly instead.
 
 ---
 
@@ -1783,12 +1934,12 @@ It is also common to see ps trimming and/or truncating being used with ps-weight
 
 - More than two treatments`r cite_mod(title = "estimation for multiple treatments ")`
 
-- Stabilized ATE weights`r cite_mod(title = "Moving towards best practice")`
+- Other PS weighting approaches `r cite_mod(title = "Alternative approaches for confounding adjustment")`
 
  
 ???
 
-A lot of interesting topics did not make it into this presentation. Here is a list of topics with references for further reading.
+Some interesting topics did not make it into this presentation. Here is a list of topics with references for further reading.
 
 ---
 

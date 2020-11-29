@@ -2,14 +2,6 @@
 and explain how this works. Just run the syntax if you need to generate 
 the data used in the example. */
 
-
-/* Number of observations in simulated data. */
-%let NObs = 10000; 
-/* Number of covariates to simulate from multivariate normal distribution. */
-%let NVars = 4;	
-/* Number of simulated covariates that are dichotomized. */
-%let ND = 3;
-
 /* Specify the number of observations used to estimate parameters and specify
 the convergence criteria. Using a dataset with 1 million observations and a 
 convergence griteria of 0.00001 is sufficient to estimate parameters inducing 
@@ -17,28 +9,21 @@ the necessary precision. */
 %let EstParm_NObs = 10**6; 
 %let EstParm_ConvCri = 0.00001; 
 
-/* Parameters specifying the Weibull distributed baseline hazard function.
-lambda = 0.00002 and eta = 2 corresponds to values used in previous studies and 
-gives reasonable times of follow-up. */
-%let lambda = 0.00002;
-%let eta = 2;
-
-/* Induced proportion of treated patients. */
-%let E_TargetProp = 0.5;
-/* Linear predictor minus intercept, used in true PS model */
-%let E_LP_NoInt = log(1.2) * x1 + log(1.2) * x2 + log(1.5) * x3 + log(1.5) * x4; 
-/* Marginal HR exposure effect that is to be induced. */
-%let MarEffect = 0.5; 
-/* Linear predictor minus exposure term, used in the true outcome Cox model. */
-%let Cox_LP_NoE = log(1.2) * x1 + log(1.2) * x2 + log(1.5) * x3 + log(1.5) * x4;
-
 /*******************************************************************************
 ESTIMATE PARAMETERS
 *******************************************************************************/
 
-/* Simulate covariate data */
+/*** Simulate covariate data ***/
+
+/* Number of observations in simulated data. */
+%let NObs = 10000; 
+/* Number of covariates to simulate from multivariate normal distribution. */
+%let NVars = 5;	
+/* Number of simulated covariates that are dichotomized. */
+%let ND = 4;
+
 %SimVarsMultiNormal(
-	OutDS = par_dat,
+	OutDS = par_dat1,
 	NObs = &EstParm_NObs,
 	NSim = 1,
 	NVars = &NVars,
@@ -49,10 +34,34 @@ ESTIMATE PARAMETERS
 	DEL = Y
 );
 
-/* Estimate intercept parameter in PS-model 
-inducing the desired proportion of exposed patients. */
+/*** Estimate intercept parameter in PS-model ***/
+
+/* Transform variables */
+data par_dat2;
+  set par_dat1;
+  age = max(0, 50 + sqrt(100) * x5);
+  age_trans = age**1.1;
+  risk_score = x1;
+  comor_1 = x2;
+  comor_2 = x3;
+  male = x4;
+  drop x:;
+run;
+
+/* Induced proportion of treated patients. */
+%let E_TargetProp = 0.5;
+/* Linear predictor minus intercept, used in true PS model */
+%let E_LP_NoInt = 
+  log(1.3) * comor_1
+  + log(1.3) * comor_2
+  + log(1.5) * male  
+  + log(1.02) * age_trans
+  + log(1.02) * male * age_trans
+  ;
+
+
 %SimBinVar(
-	InDS = par_dat,
+	InDS = par_dat2,
   OutParms = par1,
 	TargetProp = &E_TargetProp,
 	LP_NoInt = &E_LP_NoInt,
@@ -62,12 +71,28 @@ inducing the desired proportion of exposed patients. */
 	DEL = Y
 );
 
-/* Estimate conditional treatment effect that will induce the 
-desired marginal exposure effect. */
+/*** Induce desired marginal exposure effect ***/
+
+/* Parameters specifying the Weibull distributed baseline hazard function. */
+%let lambda = 0.00002;
+%let eta = 1.5;
+/* Marginal HR exposure effect that is to be induced. */
+%let MarEffect = 0.5; 
+/* Linear predictor minus exposure term, used in the true outcome Cox model. */
+%let Cox_LP_NoE = 
+  log(1.3) * risk_score 
+  + log(1.3) * comor_1
+  + log(1.3) * comor_2
+  + log(1.5) * male  
+  + log(1.02) * age_trans
+  + log(1.02) * male * age_trans
+  ;
+
+
 ods listing;
 ods results off;
 %SimTimeToEvent(
-	InDS = par_dat,
+	InDS = par_dat2,
 	OutParms = par2,
 	TargetMar = &MarEffect,
 	LP_NoInd = &Cox_LP_NoE,
@@ -96,7 +121,7 @@ quit;
 
 /* Simulate covariate data */
 %SimVarsMultiNormal(
-	OutDS = cov_dat,
+	OutDS = cov_dat1,
 	NObs = &NObs,
 	NSim = 1,
 	NVars = &NVars,
@@ -109,17 +134,27 @@ quit;
 
 /* Simulate exposure, outcome and censoring. */
 data data.population;
-  retain id treatment male risk_score agegroup time death;
-  format agegroup $5.;
-	set cov_dat;
+  retain id treatment male age risk_score comorbidity_score time death;
+	set cov_dat1;
+  format comorbidity_score $3.;
 	call streaminit(5);
+  /* transform variables */
+  age = max(0, 50 + sqrt(100) * x5);
+  age_trans = age**1.1;
+  risk_score = x1;
+  comor_1 = x2;
+  comor_2 = x3;
+  if comor_1 + comor_2 = 0 then comorbidity_score = "0";
+  if comor_1 + comor_2 = 1 then comorbidity_score = "1-2";
+  if comor_1 + comor_2 = 2 then comorbidity_score = "3+";
+  male = x4;
 	/* Calculation of true PS */
 	ps_true = 1 / (1 + exp(-&Alpha0Est - (&E_LP_NoInt)));
 	/* Simulation of exposure based on the true ps */
-	E = rand("bernoulli", ps_true);
+	treatment = rand("bernoulli", ps_true);
 	/* Simulation of time-to-event */
 	u = rand("uniform");
-	time = (-log(u) / (0.00002 * exp(&Beta0Est * E + &Cox_LP_NoE))) ** (1 / 2);
+	time = (-log(u) / (0.00002 * exp(&Beta0Est * treatment + &Cox_LP_NoE))) ** (1 / 1.5);
   death = 1;
   time = round(time);
   /* Censor all time-to-events above 365. */
@@ -128,26 +163,16 @@ data data.population;
     death = 0;
   end;
   id = _n_;
-  /* make new variables */
-  treatment = e;
-  if x1 + x2 = 0 then agegroup = "0-18";
-  else if x1 + x2 = 1 then agegroup = "19-64";
-  else if x1 + x2 = 2 then agegroup = "65+";
-  male = x3;
-  risk_score = x4;
-  keep id treatment male risk_score agegroup time death;
+  keep id treatment male risk_score age comorbidity_score time death;
 run;
 
 /*******************************************************************************
-ASSESS INCUCED EFFECTS
+ASSESS INDUCED EFFECTS
 *******************************************************************************/
-
-/* Simulate very large dataset to assess if we have induced the desired
-effects. */
 
 %SimVarsMultiNormal(
 	OutDS = test_dat1,
-	NObs = 10**7,
+	NObs = 10**6,
 	NSim = 1,
 	NVars = &NVars,
 	ND = &ND,
@@ -158,41 +183,41 @@ effects. */
 	);
 
 data test_dat2;
-  retain id treatment male risk_score agegroup time death;
-  format agegroup $5.;
+  retain treatment male age risk_score comorbidity_score time death;
 	set test_dat1;
 	call streaminit(7);
+  /* transform variables */
+  age = max(0, 50 + sqrt(100) * x5);
+  age_trans = age**1.1;
+  risk_score = x1;
+   comor_1 = x2;
+  comor_2 = x3;
+  if comor_1 + comor_2 = 0 then comorbidity_score = "0";
+  if comor_1 + comor_2 = 1 then comorbidity_score = "1-2";
+  if comor_1 + comor_2 = 2 then comorbidity_score = "3+";
+  male = x4;
 	/* Calculation of true PS */
 	ps_true = 1 / (1 + exp(-&Alpha0Est - (&E_LP_NoInt)));
 	/* Simulation of exposure based on the true ps */
-	E = rand("bernoulli", ps_true);
+	treatment = rand("bernoulli", ps_true);
 	/* Simulation of time-to-event */
 	u = rand("uniform");
-	time = (-log(u) / (0.00002 * exp(&Beta0Est * E + &Cox_LP_NoE))) ** (1 / 2);
+	time = (-log(u) / (0.00002 * exp(&Beta0Est * treatment + &Cox_LP_NoE))) ** (1 / 1.5);
   death = 1;
   time = round(time);
-  /* Censor all time-to-events above 365 as an independent end-of-study kind of 
-  censuring. */
+  /* Censor all time-to-events above 365. */
   if time > 365 then do;
     time = 365;
     death = 0;
   end;
-  id = _n_;
-  /* make new variables */
-  treatment = e;
-  if x1 + x2 = 0 then agegroup = "0-18";
-  else if x1 + x2 = 1 then agegroup = "19-64";
-  else if x1 + x2 = 2 then agegroup = "65+";
-  male = x3;
-  risk_score = x4;
   weight_ate = treatment / ps_true + (1 - treatment) / (1 - ps_true);
   weight_att = treatment + (1 - treatment) * ps_true / (1 - ps_true);
 run;
 
 /* Check induced conditional relative effects. */
 proc phreg data = test_dat2 plots = none;
-  class agegroup(ref = "0-18") / param = ref;
-  model time*death(0) = treatment male risk_score agegroup / risklimits;
+  class comorbidity_score(ref = "0") / param = ref;
+  model time*death(0) = treatment risk_score comorbidity_score male|age_trans / risklimits;
   ods output ParameterEstimates = est_rel_cond;
 run;
 
@@ -216,7 +241,7 @@ proc phreg data = test_dat2 plots = none;
 run;
 
 data data.induced_relative_effects;
-  format check MarEffect E_LP_NoInt Cox_LP_NoE parameter $100.;
+  format check E_LP_NoInt Cox_LP_NoE parameter $200.;
   set
     est_rel_cond(in = q1)
     est_rel_crude(in = q2)
@@ -228,21 +253,13 @@ data data.induced_relative_effects;
   if q3 then check = "Induced relative ATE";
   if q4 then check = "Induced relative ATT";
 
-  if parameter = "male" then parameter = "male (x3)";
-  if parameter = "risk_score" then parameter = "risk_score (x4)";
-  if parameter = "agegroup" and classval0 = "19-64" 
-    then parameter = "agegroup 19-64 (x1 + x2 = 1)";
-  if parameter = "agegroup" and classval0 = "65+" 
-    then parameter = "agegroup 65+ (x1 + x2 = 2)";
-
-  MarEffect = "relative effect = &MarEffect";
+  MarEffect = &MarEffect;
   E_LP_NoInt = "&E_LP_NoInt"; 
   Cox_LP_NoE = "&Cox_LP_NoE";
 
   keep check MarEffect E_LP_NoInt Cox_LP_NoE 
        parameter classval0 hazardratio hrlowercl hruppercl;
 run;
-
 
 /* Check induced risk 1-year risk differences */
 proc lifetest data = test_dat2

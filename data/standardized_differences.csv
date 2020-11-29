@@ -1,53 +1,65 @@
 strata,pop,__var,__sd,male
-overall,ATE-weighted,male,0.0016010552,
-overall,ATE-weighted,risk_score,0.0022122824,
-overall,ATE-weighted,agegroup: 0-18,0.0009735522,
-overall,ATE-weighted,agegroup: 19-64,0.0000309816,
-overall,ATE-weighted,agegroup: 65+,0.0010085543,
-overall,ATT-weighted,male,0.0041304846,
-overall,ATT-weighted,risk_score,0.0070897383,
-overall,ATT-weighted,agegroup: 0-18,0.0026050294,
-overall,ATT-weighted,agegroup: 19-64,0.0057027382,
-overall,ATT-weighted,agegroup: 65+,0.0039641777,
-overall,Matched,male,0.0060214219,
-overall,Matched,risk_score,0.0017771307,
-overall,Matched,agegroup: 0-18,0.00432728,
-overall,Matched,agegroup: 19-64,0.0095895634,
-overall,Matched,agegroup: 65+,0.0066902244,
-overall,Original,male,0.2038355652,
-overall,Original,risk_score,0.4065545231,
-overall,Original,agegroup: 0-18,0.1124352931,
-overall,Original,agegroup: 19-64,0.0280735305,
-overall,Original,agegroup: 65+,0.1451495938,
-male,ATE-weighted,risk_score,0.0202041502,0
-male,ATE-weighted,agegroup: 0-18,0.0103963066,0
-male,ATE-weighted,agegroup: 19-64,0.0166275537,0
-male,ATE-weighted,agegroup: 65+,0.029715247,0
-male,ATE-weighted,risk_score,0.0154936322,1
-male,ATE-weighted,agegroup: 0-18,0.0083571019,1
-male,ATE-weighted,agegroup: 19-64,0.0165249489,1
-male,ATE-weighted,agegroup: 65+,0.0275557518,1
-male,ATT-weighted,risk_score,0.0174247687,0
-male,ATT-weighted,agegroup: 0-18,0.0105551873,0
-male,ATT-weighted,agegroup: 19-64,0.021488948,0
-male,ATT-weighted,agegroup: 65+,0.0336829609,0
-male,ATT-weighted,risk_score,0.001349748,1
-male,ATT-weighted,agegroup: 0-18,0.0132417367,1
-male,ATT-weighted,agegroup: 19-64,0.0071018826,1
-male,ATT-weighted,agegroup: 65+,0.0203428565,1
-male,Matched,risk_score,0.0055630002,0
-male,Matched,agegroup: 0-18,0.0495816154,0
-male,Matched,agegroup: 19-64,0.0048118489,0
-male,Matched,agegroup: 65+,0.0516994128,0
-male,Matched,risk_score,0.0074648398,1
-male,Matched,agegroup: 0-18,0.033100602,1
-male,Matched,agegroup: 19-64,0.0215320613,1
-male,Matched,agegroup: 65+,0.0544877505,1
-male,Original,risk_score,0.4255768809,0
-male,Original,agegroup: 0-18,0.1280411393,0
-male,Original,agegroup: 19-64,0.0368364893,0
-male,Original,agegroup: 65+,0.1694900215,0
-male,Original,risk_score,0.396947254,1
-male,Original,agegroup: 0-18,0.1016987379,1
-male,Original,agegroup: 19-64,0.0171647529,1
-male,Original,agegroup: 65+,0.1225881333,1
+overall,ATE-weighted,male,0.0049500269,
+overall,ATE-weighted,risk_score,0.0001007208,
+overall,ATE-weighted,age,0.0118849819,
+overall,ATE-weighted,comorbidity_score: 0,0.0028296921,
+overall,ATE-weighted,comorbidity_score: 1-2,0.0040756395,
+overall,ATE-weighted,comorbidity_score: 3+,0.0074744793,
+overall,ATT-weighted,male,0.0056216205,
+overall,ATT-weighted,risk_score,0.0002150206,
+overall,ATT-weighted,age,0.0258786071,
+overall,ATT-weighted,comorbidity_score: 0,0.0095510022,
+overall,ATT-weighted,comorbidity_score: 1-2,0.0059529172,
+overall,ATT-weighted,comorbidity_score: 3+,0.0153699721,
+overall,Matched,male,0.0048653656,
+overall,Matched,risk_score,0.0080802484,
+overall,Matched,age,0.0073202925,
+overall,Matched,comorbidity_score: 0,0.0029454196,
+overall,Matched,comorbidity_score: 1-2,0.0105046702,
+overall,Matched,comorbidity_score: 3+,0.0144127639,
+overall,Original,male,0.9184123142,
+overall,Original,risk_score,0.0033765033,
+overall,Original,age,0.375159023,
+overall,Original,comorbidity_score: 0,0.1337131926,
+overall,Original,comorbidity_score: 1-2,0.0197017002,
+overall,Original,comorbidity_score: 3+,0.1096310039,
+male,ATE-weighted,risk_score,0.0097613942,0
+male,ATE-weighted,age,0.0037495366,0
+male,ATE-weighted,comorbidity_score: 0,6.0918974E-6,0
+male,ATE-weighted,comorbidity_score: 1-2,0.0094531654,0
+male,ATE-weighted,comorbidity_score: 3+,0.0108519681,0
+male,ATE-weighted,risk_score,0.0097091257,1
+male,ATE-weighted,age,0.0279292901,1
+male,ATE-weighted,comorbidity_score: 0,0.0056893577,1
+male,ATE-weighted,comorbidity_score: 1-2,0.0013620501,1
+male,ATE-weighted,comorbidity_score: 3+,0.0040352872,1
+male,ATT-weighted,risk_score,0.0151174085,0
+male,ATT-weighted,age,0.0016044241,0
+male,ATT-weighted,comorbidity_score: 0,0.0035232572,0
+male,ATT-weighted,comorbidity_score: 1-2,0.0112311408,0
+male,ATT-weighted,comorbidity_score: 3+,0.0153139728,0
+male,ATT-weighted,risk_score,0.0065906621,1
+male,ATT-weighted,age,0.0377057988,1
+male,ATT-weighted,comorbidity_score: 0,0.0121868752,1
+male,ATT-weighted,comorbidity_score: 1-2,0.0037585032,1
+male,ATT-weighted,comorbidity_score: 3+,0.015628901,1
+male,Matched,risk_score,0.0034239282,0
+male,Matched,age,0.0024367684,0
+male,Matched,comorbidity_score: 0,0.0099673151,0
+male,Matched,comorbidity_score: 1-2,0.0252453536,0
+male,Matched,comorbidity_score: 3+,0.0188857709,0
+male,Matched,risk_score,0.010021683,1
+male,Matched,age,0.0092235631,1
+male,Matched,comorbidity_score: 0,0.007950523,1
+male,Matched,comorbidity_score: 1-2,0.0042684279,1
+male,Matched,comorbidity_score: 3+,0.0122666112,1
+male,Original,risk_score,0.0125884243,0
+male,Original,age,0.3209243026,0
+male,Original,comorbidity_score: 0,0.168835303,0
+male,Original,comorbidity_score: 1-2,0.0261273371,0
+male,Original,comorbidity_score: 3+,0.1311240979,0
+male,Original,risk_score,0.027690955,1
+male,Original,age,0.6436470774,1
+male,Original,comorbidity_score: 0,0.15234152,1
+male,Original,comorbidity_score: 1-2,0.0083964907,1
+male,Original,comorbidity_score: 3+,0.1469728778,1
